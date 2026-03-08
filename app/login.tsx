@@ -1,8 +1,11 @@
 import { useNavigation } from "@react-navigation/native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -20,27 +23,28 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  const usernameRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const apiUrl = "https://unresources.cravii.ng/api/login.php";
 
   const handleAuth = async () => {
     if (!username.trim() || !password.trim()) {
-      Alert.alert("Error", "Username and password are required");
+      Alert.alert("Missing Fields", "Username and password are required.");
       return;
     }
-
     if (mode === "signup" && !email.trim()) {
-      Alert.alert("Error", "Email is required for signup");
+      Alert.alert("Missing Fields", "Email is required for sign up.");
       return;
     }
 
     setLoading(true);
-
     try {
       let body = `action=${encodeURIComponent(mode)}`;
       body += `&username=${encodeURIComponent(username.trim())}`;
       body += `&password=${encodeURIComponent(password)}`;
-
       if (mode === "signup") {
         body += `&email=${encodeURIComponent(email.trim())}`;
       }
@@ -55,13 +59,11 @@ export default function Login() {
       });
 
       const text = await response.text();
-      console.log("Raw server response:", text);
-
       let data: any;
       try {
         data = JSON.parse(text);
       } catch {
-        Alert.alert("Error", "Server sent invalid JSON response");
+        Alert.alert("Error", "Server sent an unexpected response.");
         return;
       }
 
@@ -69,172 +71,395 @@ export default function Login() {
         if (mode === "login") {
           navigation.navigate("Home", { user: data.user });
         } else {
-          Alert.alert("Success", "Account created successfully. Please login.");
+          Alert.alert("Success", "Account created! Please log in.");
           setMode("login");
           setEmail("");
           setUsername("");
           setPassword("");
         }
       } else {
-        Alert.alert("Failed", data.message || "Authentication failed");
+        Alert.alert("Failed", data.message || "Authentication failed.");
       }
     } catch (err) {
-      console.error("Fetch error:", err);
-      Alert.alert("Network Error", "Cannot reach server");
+      Alert.alert("Network Error", "Cannot reach the server.");
     } finally {
       setLoading(false);
     }
   };
 
+  const focused = (name: string) => focusedField === name;
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Unimaid Resources</Text>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── HEADER ── */}
+        <View style={styles.header}>
+          <View style={styles.pill}>
+            <View style={styles.pillDot} />
+            <Text style={styles.pillText}>UNIMAID RESOURCES</Text>
+          </View>
+          <Text style={styles.heading}>
+            {"Welcome\n"}
+            <Text style={styles.headingAccent}>Back.</Text>
+          </Text>
+          <Text style={styles.subheading}>
+            Sign in to access your academic portal
+          </Text>
+        </View>
 
-      <View style={styles.toggleContainer}>
-        <TouchableOpacity
-          style={[styles.toggleButton, mode === "login" && styles.active]}
-          onPress={() => setMode("login")}
-        >
-          <Text
-            style={[styles.toggleText, mode === "login" && styles.activeText]}
+        {/* ── CARD ── */}
+        <View style={styles.card}>
+          {/* ── TABS ── */}
+          <View style={styles.tabs}>
+            <TouchableOpacity
+              style={styles.tab}
+              onPress={() => setMode("login")}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.tabText, mode === "login" && styles.tabTextOn]}
+              >
+                Login
+              </Text>
+              {mode === "login" && <View style={styles.tabUnderline} />}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.tab}
+              onPress={() => setMode("signup")}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.tabText, mode === "signup" && styles.tabTextOn]}
+              >
+                Sign Up
+              </Text>
+              {mode === "signup" && <View style={styles.tabUnderline} />}
+            </TouchableOpacity>
+          </View>
+
+          {/*
+           * KEY FIX: Email input is ALWAYS mounted.
+           * We hide it with height:0 + overflow:hidden instead of
+           * conditional rendering — this prevents cursor/layout glitching
+           * on the other inputs when mode switches.
+           */}
+          <View
+            style={mode === "signup" ? styles.fieldVisible : styles.fieldHidden}
           >
-            Login
+            <Text style={styles.label}>EMAIL</Text>
+            <View
+              style={[
+                styles.inputRow,
+                focused("email") && styles.inputRowFocused,
+              ]}
+            >
+              <Text style={styles.inputIcon}>✉{"  "}</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor="#2E2E50"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+                onFocus={() => setFocusedField("email")}
+                onBlur={() => setFocusedField(null)}
+                returnKeyType="next"
+                onSubmitEditing={() => usernameRef.current?.focus()}
+                editable={mode === "signup"}
+              />
+            </View>
+          </View>
+
+          {/* ── USERNAME ── */}
+          <View style={styles.fieldVisible}>
+            <Text style={styles.label}>USERNAME</Text>
+            <View
+              style={[
+                styles.inputRow,
+                focused("username") && styles.inputRowFocused,
+              ]}
+            >
+              <Text style={styles.inputIcon}>@{"  "}</Text>
+              <TextInput
+                ref={usernameRef}
+                style={styles.input}
+                placeholder="Enter your username"
+                placeholderTextColor="#2E2E50"
+                autoCapitalize="none"
+                value={username}
+                onChangeText={setUsername}
+                onFocus={() => setFocusedField("username")}
+                onBlur={() => setFocusedField(null)}
+                returnKeyType="next"
+                onSubmitEditing={() => passwordRef.current?.focus()}
+              />
+            </View>
+          </View>
+
+          {/* ── PASSWORD ── */}
+          <View style={styles.fieldVisible}>
+            <Text style={styles.label}>PASSWORD</Text>
+            <View
+              style={[
+                styles.inputRow,
+                focused("password") && styles.inputRowFocused,
+              ]}
+            >
+              <Text style={styles.inputIcon}>⬡{"  "}</Text>
+              <TextInput
+                ref={passwordRef}
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor="#2E2E50"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                onFocus={() => setFocusedField("password")}
+                onBlur={() => setFocusedField(null)}
+                returnKeyType="done"
+                onSubmitEditing={handleAuth}
+              />
+            </View>
+          </View>
+
+          {/* ── BUTTON ── */}
+          <TouchableOpacity
+            style={[styles.button, loading && styles.buttonDisabled]}
+            onPress={handleAuth}
+            disabled={loading}
+            activeOpacity={0.85}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.buttonText}>
+                {mode === "login" ? "Enter Portal  →" : "Create Account  →"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* ── SWITCH LINK ── */}
+        <TouchableOpacity
+          onPress={() => setMode(mode === "login" ? "signup" : "login")}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.switchText}>
+            {mode === "login" ? "No account yet?  " : "Already registered?  "}
+            <Text style={styles.switchLink}>
+              {mode === "login" ? "Sign Up" : "Login"}
+            </Text>
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.toggleButton, mode === "signup" && styles.active]}
-          onPress={() => setMode("signup")}
-        >
-          <Text
-            style={[styles.toggleText, mode === "signup" && styles.activeText]}
-          >
-            Sign Up
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {mode === "signup" && (
-        <TextInput
-          placeholder="Email"
-          style={styles.input}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          value={email}
-          onChangeText={setEmail}
-        />
-      )}
-
-      <TextInput
-        placeholder="Username"
-        style={styles.input}
-        autoCapitalize="none"
-        value={username}
-        onChangeText={setUsername}
-      />
-
-      <TextInput
-        placeholder="Password"
-        style={styles.input}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
-        onPress={handleAuth}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>
-            {mode === "login" ? "Login" : "Sign Up"}
-          </Text>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={() => setMode(mode === "login" ? "signup" : "login")}
-      >
-        <Text style={styles.switchText}>
-          {mode === "login"
-            ? "Don't have account? Sign Up"
-            : "Already have account? Login"}
+        <Text style={styles.footerTag}>
+          University of Maiduguri · Resources
         </Text>
-      </TouchableOpacity>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
+// ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
+const C = {
+  bg: "#08080F",
+  card: "#0F0F1C",
+  border: "#1C1C30",
+  inputBg: "#070710",
+  purple: "#7C3AED",
+  purpleLight: "#A78BFA",
+  white: "#FFFFFF",
+  offWhite: "#E5E5F0",
+  muted: "#4B4B6B",
+  mutedDark: "#2E2E50",
+};
+
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
+    backgroundColor: C.bg,
+  },
+  scroll: {
+    flexGrow: 1,
     justifyContent: "center",
-    padding: 24,
-    backgroundColor: "#fff",
+    paddingHorizontal: 24,
+    paddingVertical: 48,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    marginBottom: 40,
-    textAlign: "center",
-    color: "#333",
+
+  // HEADER
+  header: {
+    marginBottom: 28,
   },
-  toggleContainer: {
+  pill: {
     flexDirection: "row",
-    marginBottom: 24,
-    borderRadius: 8,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: 14,
-    backgroundColor: "#f8f9fa",
     alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(109,40,217,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(109,40,217,0.4)",
+    borderRadius: 100,
+    paddingVertical: 5,
+    paddingHorizontal: 14,
+    marginBottom: 18,
+    gap: 7,
   },
-  active: {
-    backgroundColor: "#0066cc",
+  pillDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.purpleLight,
   },
-  toggleText: {
-    fontSize: 16,
-    color: "#666",
+  pillText: {
+    fontSize: 10,
+    letterSpacing: 2.5,
+    color: C.purpleLight,
     fontWeight: "600",
   },
-  activeText: {
-    color: "#fff",
+  heading: {
+    fontSize: 38,
+    fontWeight: "900",
+    color: C.white,
+    letterSpacing: -1,
+    lineHeight: 46,
+    marginBottom: 8,
+  },
+  headingAccent: {
+    color: C.purple,
+  },
+  subheading: {
+    fontSize: 13,
+    color: C.muted,
+    fontWeight: "400",
+  },
+
+  // CARD
+  card: {
+    backgroundColor: C.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 24,
+    marginBottom: 16,
+  },
+
+  // TABS
+  tabs: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    marginBottom: 22,
+  },
+  tab: {
+    flex: 1,
+    alignItems: "center",
+    paddingBottom: 12,
+    position: "relative",
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: C.muted,
+  },
+  tabTextOn: {
+    color: C.purpleLight,
+  },
+  tabUnderline: {
+    position: "absolute",
+    bottom: -1,
+    left: "20%",
+    right: "20%",
+    height: 2,
+    backgroundColor: C.purple,
+    borderRadius: 2,
+  },
+
+  // FIELDS
+  fieldVisible: {
+    marginBottom: 14,
+  },
+  fieldHidden: {
+    height: 0,
+    overflow: "hidden",
+    opacity: 0,
+    marginBottom: 0,
+  },
+  label: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 2,
+    color: C.muted,
+    marginBottom: 7,
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.inputBg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    height: 50,
+    paddingHorizontal: 14,
+  },
+  inputRowFocused: {
+    borderColor: C.purple,
+  },
+  inputIcon: {
+    fontSize: 13,
+    color: C.muted,
   },
   input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    padding: 14,
-    marginBottom: 16,
-    borderRadius: 8,
-    backgroundColor: "#fafafa",
-    fontSize: 16,
+    flex: 1,
+    height: 50,
+    fontSize: 15,
+    color: C.offWhite,
+    fontWeight: "400",
+    paddingVertical: 0,
   },
+
+  // BUTTON
   button: {
-    backgroundColor: "#0066cc",
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: C.purple,
+    height: 52,
+    borderRadius: 11,
     alignItems: "center",
-    marginTop: 8,
+    justifyContent: "center",
+    marginTop: 6,
   },
   buttonDisabled: {
-    backgroundColor: "#88aaff",
+    opacity: 0.5,
   },
   buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  switchText: {
-    marginTop: 24,
-    textAlign: "center",
-    color: "#0066cc",
+    color: C.white,
     fontSize: 15,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+
+  // FOOTER
+  switchText: {
+    textAlign: "center",
+    fontSize: 13,
+    color: C.muted,
+  },
+  switchLink: {
+    color: C.purpleLight,
+    fontWeight: "700",
+  },
+  footerTag: {
+    marginTop: 20,
+    textAlign: "center",
+    fontSize: 10,
+    letterSpacing: 2,
+    color: C.mutedDark,
+    textTransform: "uppercase",
   },
 });
