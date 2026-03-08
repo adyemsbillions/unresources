@@ -19,26 +19,7 @@ import {
     View,
 } from "react-native";
 import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
-
-// ─── THEME ───────────────────────────────────────────────────────────────────
-
-const C = {
-  bg: "#0d0618",
-  bgDeep: "#080412",
-  card: "rgba(255,255,255,0.055)" as const,
-  border: "rgba(255,255,255,0.09)" as const,
-  purple: "#6d28d9",
-  purpleMid: "#7c3aed",
-  purpleGlow: "#a78bfa",
-  bubbleSent: "#5b21b6",
-  bubbleRecv: "rgba(255,255,255,0.07)" as const,
-  white: "#ffffff",
-  whiteSoft: "rgba(255,255,255,0.88)" as const,
-  whiteMuted: "rgba(255,255,255,0.55)" as const,
-  faint: "rgba(255,255,255,0.30)" as const,
-  online: "#10d9a0",
-  inputBg: "#100820" as const,
-};
+import { C } from "./constants/theme";
 
 // ─── SVG ICONS ───────────────────────────────────────────────────────────────
 
@@ -247,7 +228,7 @@ function IconTick({
   );
 }
 
-// ─── TYPES & MOCK DATA ───────────────────────────────────────────────────────
+// ─── TYPES & MOCK ────────────────────────────────────────────────────────────
 
 type Msg = {
   id: number;
@@ -258,7 +239,7 @@ type Msg = {
   dateSeparator?: string;
 };
 
-const INITIAL_MESSAGES: Msg[] = [
+const INITIAL: Msg[] = [
   {
     id: 1,
     text: "Hey, are you coming to the group study today?",
@@ -318,7 +299,7 @@ const INITIAL_MESSAGES: Msg[] = [
   },
   {
     id: 9,
-    text: "All 5 of us are coming. Tunde might be a bit late.",
+    text: "All 5 of us are coming. Tunde might be late though.",
     sent: false,
     time: "10:25 AM",
     read: true,
@@ -346,12 +327,12 @@ const INITIAL_MESSAGES: Msg[] = [
   },
 ];
 
-const AUTO_REPLIES = [
+const REPLIES = [
   "Got it! See you there.",
   "Sure, no problem at all.",
   "Thanks for the heads up!",
   "Okay, I'll keep that in mind.",
-  "Sounds good to me.",
+  "Sounds good to me 👍",
 ];
 
 // ─── DATE SEPARATOR ──────────────────────────────────────────────────────────
@@ -365,7 +346,6 @@ function DateSep({ label }: { label: string }) {
     </View>
   );
 }
-
 const ds = StyleSheet.create({
   wrap: {
     flexDirection: "row",
@@ -383,7 +363,7 @@ const ds = StyleSheet.create({
   },
 });
 
-// ─── MESSAGE BUBBLE ──────────────────────────────────────────────────────────
+// ─── BUBBLE ──────────────────────────────────────────────────────────────────
 
 function Bubble({ msg }: { msg: Msg }) {
   return (
@@ -395,7 +375,7 @@ function Bubble({ msg }: { msg: Msg }) {
         <View style={mb.footer}>
           <Text style={mb.time}>{msg.time}</Text>
           {msg.sent && (
-            <View style={{ marginLeft: 4 }}>
+            <View style={{ marginLeft: 3 }}>
               <IconTick
                 color={msg.read ? C.purpleGlow : C.faint}
                 double={msg.read}
@@ -407,7 +387,6 @@ function Bubble({ msg }: { msg: Msg }) {
     </View>
   );
 }
-
 const mb = StyleSheet.create({
   row: { flexDirection: "row", marginBottom: 3, paddingHorizontal: 14 },
   rowSent: { justifyContent: "flex-end" },
@@ -419,9 +398,9 @@ const mb = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 8,
   },
-  bubbleSent: { backgroundColor: C.bubbleSent, borderBottomRightRadius: 4 },
+  bubbleSent: { backgroundColor: "#5b21b6", borderBottomRightRadius: 4 },
   bubbleRecv: {
-    backgroundColor: C.bubbleRecv,
+    backgroundColor: "rgba(255,255,255,0.07)",
     borderWidth: 1,
     borderColor: C.border,
     borderBottomLeftRadius: 4,
@@ -439,22 +418,21 @@ const mb = StyleSheet.create({
   time: { fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: "500" },
 });
 
-// ─── TYPING INDICATOR ────────────────────────────────────────────────────────
+// ─── TYPING ──────────────────────────────────────────────────────────────────
 
 function Typing() {
   return (
     <View style={[mb.row, mb.rowRecv, { paddingBottom: 6 }]}>
       <View style={[mb.bubble, mb.bubbleRecv, { paddingVertical: 13 }]}>
         <View style={{ flexDirection: "row", gap: 5, alignItems: "center" }}>
-          <View style={[ty.dot, { opacity: 0.45 }]} />
-          <View style={[ty.dot, { opacity: 0.7 }]} />
+          <View style={[ty.dot, { opacity: 0.4 }]} />
+          <View style={[ty.dot, { opacity: 0.65 }]} />
           <View style={[ty.dot, { opacity: 1.0 }]} />
         </View>
       </View>
     </View>
   );
 }
-
 const ty = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.faint },
 });
@@ -471,73 +449,67 @@ export default function ChatRoom() {
     online: string;
   }>();
 
-  // Fallback values so the screen never crashes if params are missing
   const chatName = params.name ?? "Chat";
   const initials = params.initials ?? "?";
-  const avatarColor = params.color ?? "#6d28d9";
+  const avatarColor = params.color ?? C.purpleMid;
   const isOnline = params.online === "1";
 
-  const [messages, setMessages] = useState<Msg[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<Msg[]>(INITIAL);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(true);
   const scrollRef = useRef<ScrollView>(null);
 
-  // Dismiss the initial typing indicator after ~2.5s
   useEffect(() => {
     const t = setTimeout(() => setTyping(false), 2500);
     return () => clearTimeout(t);
   }, []);
 
-  const scrollToEnd = (animated = true) => {
+  const scrollToEnd = (animated = true) =>
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated }), 80);
-  };
 
   const sendMessage = () => {
     const text = input.trim();
     if (!text) return;
-
     const now = new Date().toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
     });
-
     setMessages((prev) => [
       ...prev,
       { id: Date.now(), text, sent: true, time: now, read: false },
     ]);
     setInput("");
     scrollToEnd();
-
-    // Simulate reply
     setTyping(true);
-    const delay = 1800 + Math.random() * 1200;
-    setTimeout(() => {
-      setTyping(false);
-      const reply =
-        AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
-      const replyTime = new Date().toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          text: reply,
-          sent: false,
-          time: replyTime,
-          read: true,
-        },
-      ]);
-      scrollToEnd();
-    }, delay);
+    setTimeout(
+      () => {
+        setTyping(false);
+        const reply = REPLIES[Math.floor(Math.random() * REPLIES.length)];
+        const rt = new Date().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 1,
+            text: reply,
+            sent: false,
+            time: rt,
+            read: true,
+          },
+        ]);
+        scrollToEnd();
+      },
+      1800 + Math.random() * 1200,
+    );
   };
 
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
 
-      {/* ── HEADER ── */}
+      {/* HEADER */}
       <View style={s.header}>
         <TouchableOpacity
           style={s.backBtn}
@@ -575,10 +547,9 @@ export default function ChatRoom() {
           </TouchableOpacity>
         </View>
       </View>
-
       <View style={s.headerDivider} />
 
-      {/* ── MESSAGES + INPUT ── */}
+      {/* MESSAGES */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -601,12 +572,11 @@ export default function ChatRoom() {
           <View style={{ height: 8 }} />
         </ScrollView>
 
-        {/* ── INPUT BAR ── */}
+        {/* INPUT BAR */}
         <View style={s.inputBar}>
           <TouchableOpacity style={s.inputAction}>
             <IconEmoji />
           </TouchableOpacity>
-
           <TextInput
             style={s.textInput}
             placeholder="Message…"
@@ -616,11 +586,9 @@ export default function ChatRoom() {
             multiline
             maxLength={500}
           />
-
           <TouchableOpacity style={s.inputAction}>
             <IconAttach />
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[s.sendBtn, input.trim().length > 0 && s.sendBtnActive]}
             onPress={sendMessage}
@@ -697,7 +665,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 10,
     gap: 6,
-    backgroundColor: C.inputBg,
+    backgroundColor: "#100820",
     borderTopWidth: 1,
     borderTopColor: C.border,
   },
@@ -726,14 +694,14 @@ const s = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 13,
-    backgroundColor: "rgba(124,58,237,0.4)",
+    backgroundColor: "rgba(124,58,237,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
   sendBtnActive: {
-    backgroundColor: "#7c3aed",
+    backgroundColor: C.purpleMid,
     elevation: 4,
-    shadowColor: "#7c3aed",
+    shadowColor: C.purpleMid,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
