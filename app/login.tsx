@@ -1,22 +1,23 @@
-import { useNavigation } from "@react-navigation/native";
+import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import React, { useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 type AuthMode = "login" | "signup";
 
 export default function Login() {
-  const navigation = useNavigation<any>();
+  const router = useRouter();
 
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
@@ -59,17 +60,23 @@ export default function Login() {
       });
 
       const text = await response.text();
-      let data: any;
+      console.log("LOGIN RAW RESPONSE:", text); // Debug: see exactly what server sends
+
+      let data;
       try {
         data = JSON.parse(text);
-      } catch {
-        Alert.alert("Error", "Server sent an unexpected response.");
+      } catch (e) {
+        Alert.alert("Server Error", "Invalid response from server.");
+        console.error("Parse failed:", text);
         return;
       }
 
       if (data.status === "success") {
         if (mode === "login") {
-          navigation.navigate("Home", { user: data.user });
+          // Save user to SecureStore for persistence
+          await SecureStore.setItemAsync("user", JSON.stringify(data.user));
+          // Navigate to Home with user data
+          router.replace("/Home");
         } else {
           Alert.alert("Success", "Account created! Please log in.");
           setMode("login");
@@ -81,7 +88,11 @@ export default function Login() {
         Alert.alert("Failed", data.message || "Authentication failed.");
       }
     } catch (err) {
-      Alert.alert("Network Error", "Cannot reach the server.");
+      Alert.alert(
+        "Network Error",
+        "Cannot reach the server. Check your connection.",
+      );
+      console.error("Auth error:", err);
     } finally {
       setLoading(false);
     }
@@ -99,7 +110,7 @@ export default function Login() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* ── HEADER ── */}
+        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.pill}>
             <View style={styles.pillDot} />
@@ -114,9 +125,9 @@ export default function Login() {
           </Text>
         </View>
 
-        {/* ── CARD ── */}
+        {/* CARD */}
         <View style={styles.card}>
-          {/* ── TABS ── */}
+          {/* TABS */}
           <View style={styles.tabs}>
             <TouchableOpacity
               style={styles.tab}
@@ -145,12 +156,7 @@ export default function Login() {
             </TouchableOpacity>
           </View>
 
-          {/*
-           * KEY FIX: Email input is ALWAYS mounted.
-           * We hide it with height:0 + overflow:hidden instead of
-           * conditional rendering — this prevents cursor/layout glitching
-           * on the other inputs when mode switches.
-           */}
+          {/* EMAIL (hidden when login) */}
           <View
             style={mode === "signup" ? styles.fieldVisible : styles.fieldHidden}
           >
@@ -179,7 +185,7 @@ export default function Login() {
             </View>
           </View>
 
-          {/* ── USERNAME ── */}
+          {/* USERNAME */}
           <View style={styles.fieldVisible}>
             <Text style={styles.label}>USERNAME</Text>
             <View
@@ -205,7 +211,7 @@ export default function Login() {
             </View>
           </View>
 
-          {/* ── PASSWORD ── */}
+          {/* PASSWORD */}
           <View style={styles.fieldVisible}>
             <Text style={styles.label}>PASSWORD</Text>
             <View
@@ -231,7 +237,7 @@ export default function Login() {
             </View>
           </View>
 
-          {/* ── BUTTON ── */}
+          {/* BUTTON */}
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleAuth}
@@ -242,13 +248,13 @@ export default function Login() {
               <ActivityIndicator color="#fff" size="small" />
             ) : (
               <Text style={styles.buttonText}>
-                {mode === "login" ? "Enter Portal  →" : "Create Account  →"}
+                {mode === "login" ? "Enter Portal →" : "Create Account →"}
               </Text>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* ── SWITCH LINK ── */}
+        {/* SWITCH LINK */}
         <TouchableOpacity
           onPress={() => setMode(mode === "login" ? "signup" : "login")}
           activeOpacity={0.7}
@@ -269,7 +275,7 @@ export default function Login() {
   );
 }
 
-// ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
+// ─── STYLES (unchanged) ──────────────────────────────────────────────────────
 const C = {
   bg: "#08080F",
   card: "#0F0F1C",
@@ -294,8 +300,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 48,
   },
-
-  // HEADER
   header: {
     marginBottom: 28,
   },
@@ -340,8 +344,6 @@ const styles = StyleSheet.create({
     color: C.muted,
     fontWeight: "400",
   },
-
-  // CARD
   card: {
     backgroundColor: C.card,
     borderRadius: 20,
@@ -350,8 +352,6 @@ const styles = StyleSheet.create({
     padding: 24,
     marginBottom: 16,
   },
-
-  // TABS
   tabs: {
     flexDirection: "row",
     borderBottomWidth: 1,
@@ -381,8 +381,6 @@ const styles = StyleSheet.create({
     backgroundColor: C.purple,
     borderRadius: 2,
   },
-
-  // FIELDS
   fieldVisible: {
     marginBottom: 14,
   },
@@ -424,8 +422,6 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     paddingVertical: 0,
   },
-
-  // BUTTON
   button: {
     backgroundColor: C.purple,
     height: 52,
@@ -443,8 +439,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.4,
   },
-
-  // FOOTER
   switchText: {
     textAlign: "center",
     fontSize: 13,

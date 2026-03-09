@@ -1,33 +1,30 @@
 /*
   File: app/Profile.tsx
   Purpose: Unimaid Resources — Profile Screen
-  Routing: Expo Router
 */
 
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
+import React, { useEffect, useState } from "react";
 import {
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { C } from "./constants/theme";
 import { BottomNav, TopBar } from "./Home";
 
-// ─── SVG ICONS ───────────────────────────────────────────────────────────────
+const API_BASE = "https://unresources.cravii.ng/api";
 
-function IconEdit({
-  color = C.white,
-  size = 14,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconEdit({ color = C.white, size = 14 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -48,13 +45,7 @@ function IconEdit({
   );
 }
 
-function IconChevron({
-  color = C.faint,
-  size = 18,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconChevron({ color = C.faint, size = 18 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -68,13 +59,7 @@ function IconChevron({
   );
 }
 
-function IconLogout({
-  color = "#f87171",
-  size = 17,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconLogout({ color = "#f87171", size = 17 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -102,8 +87,6 @@ function IconLogout({
   );
 }
 
-// ─── DATA ────────────────────────────────────────────────────────────────────
-
 const MENU_SECTIONS = [
   {
     title: "ACCOUNT",
@@ -130,9 +113,7 @@ const MENU_SECTIONS = [
   },
 ];
 
-// ─── STAT ITEM ───────────────────────────────────────────────────────────────
-
-function StatBox({ value, label }: { value: string; label: string }) {
+function StatBox({ value, label }) {
   return (
     <View style={s.statBox}>
       <Text style={s.statNum}>{value}</Text>
@@ -141,9 +122,7 @@ function StatBox({ value, label }: { value: string; label: string }) {
   );
 }
 
-// ─── MENU ITEM ───────────────────────────────────────────────────────────────
-
-function MenuItem({ item }: { item: (typeof MENU_SECTIONS)[0]["items"][0] }) {
+function MenuItem({ item }) {
   return (
     <TouchableOpacity style={s.menuItem} activeOpacity={0.72}>
       <View style={[s.menuIconBox, { backgroundColor: item.bg }]}>
@@ -155,47 +134,139 @@ function MenuItem({ item }: { item: (typeof MENU_SECTIONS)[0]["items"][0] }) {
   );
 }
 
-// ─── MAIN ────────────────────────────────────────────────────────────────────
-
 export default function Profile() {
+  const router = useRouter();
+  const { user: passedUser } = useLocalSearchParams();
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        let userData = null;
+
+        // 1. From login navigation params
+        if (passedUser && typeof passedUser === "string") {
+          userData = JSON.parse(passedUser);
+          console.log("PROFILE - From params:", userData);
+        }
+
+        // 2. From SecureStore (persistent after login)
+        if (!userData) {
+          const stored = await SecureStore.getItemAsync("user");
+          if (stored) {
+            userData = JSON.parse(stored);
+            console.log("PROFILE - From SecureStore:", userData);
+          }
+        }
+
+        // 3. If still no data → error
+        if (!userData) {
+          setError("No user data found. Please log in again.");
+          setLoading(false);
+          return;
+        }
+
+        setCurrentUser(userData);
+      } catch (err) {
+        setError("Failed to load profile: " + err.message);
+        console.error("Profile load error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [passedUser]);
+
+  const handleLogout = () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await SecureStore.deleteItemAsync("user");
+            router.replace("/login"); // ← CHANGE THIS IF YOUR LOGIN ROUTE IS DIFFERENT
+            // Examples:
+            // router.replace("/");           // if login is app/index.tsx
+            // router.replace("/(auth)/login"); // if inside group
+          } catch (err) {
+            console.error("Logout error:", err);
+            Alert.alert("Error", "Could not sign out.");
+          }
+        },
+      },
+    ]);
+  };
+
+  // Display values with fallbacks
+  const name = currentUser?.full_name || currentUser?.username || "Guest";
+  const handleText = currentUser?.username
+    ? `@${currentUser.username}`
+    : "@unknown";
+  const bioText = currentUser?.bio || "No bio set yet.";
+  const deptLevel =
+    currentUser?.department && currentUser?.level
+      ? `${currentUser.department} ${currentUser.level}`
+      : "Unknown";
+  const initials = currentUser?.initials || name.charAt(0).toUpperCase() || "?";
+  const avatarColor = currentUser?.color || C.purpleMid;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <ActivityIndicator
+          size="large"
+          color={C.purpleGlow}
+          style={{ flex: 1, justifyContent: "center" }}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
       <TopBar />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
-        {/* ── HERO ── */}
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={s.hero}>
-          {/* Avatar */}
           <View style={s.avatarWrap}>
-            <View style={s.avatar}>
-              <Text style={s.avatarText}>U</Text>
+            <View style={[s.avatar, { backgroundColor: avatarColor }]}>
+              <Text style={s.avatarText}>{initials}</Text>
             </View>
             <TouchableOpacity style={s.editBtn}>
               <IconEdit />
             </TouchableOpacity>
           </View>
 
-          <Text style={s.name}>Umar Aliyu</Text>
-          <Text style={s.handle}>@umar.aliyu · CSC 300L</Text>
-          <Text style={s.bio}>
-            {
-              "Computer Science · Unimaid\nBuilding cool things, one commit at a time."
-            }
+          <Text style={s.name}>{name}</Text>
+          <Text style={s.handle}>
+            {handleText} · {deptLevel}
           </Text>
+          <Text style={s.bio}>{bioText}</Text>
 
-          {/* Edit Profile Button */}
           <TouchableOpacity style={s.editProfileBtn}>
             <Text style={s.editProfileText}>Edit Profile</Text>
           </TouchableOpacity>
+
+          {error && (
+            <Text
+              style={{ color: "#f87171", marginTop: 12, textAlign: "center" }}
+            >
+              {error}
+            </Text>
+          )}
         </View>
 
-        {/* ── STATS ── */}
         <View style={s.statsCard}>
           <StatBox value="24" label="CHATS" />
           <View style={s.statDivider} />
@@ -204,7 +275,6 @@ export default function Profile() {
           <StatBox value="142" label="CONTACTS" />
         </View>
 
-        {/* ── QUICK TOGGLE: Notifications ── */}
         <View style={s.toggleCard}>
           <View style={[s.menuIconBox, { backgroundColor: "#b45309" }]}>
             <Text style={s.menuEmoji}>🔔</Text>
@@ -218,7 +288,6 @@ export default function Profile() {
           />
         </View>
 
-        {/* ── MENU SECTIONS ── */}
         {MENU_SECTIONS.map((section, si) => (
           <View key={si} style={s.menuSection}>
             <Text style={s.sectionLabel}>{section.title}</Text>
@@ -235,13 +304,11 @@ export default function Profile() {
           </View>
         ))}
 
-        {/* ── LOGOUT ── */}
-        <TouchableOpacity style={s.logoutBtn} activeOpacity={0.8}>
+        <TouchableOpacity style={s.logoutBtn} onPress={handleLogout}>
           <IconLogout />
           <Text style={s.logoutText}>Sign Out</Text>
         </TouchableOpacity>
 
-        {/* Version */}
         <Text style={s.version}>Unimaid Resources v1.0.0</Text>
       </ScrollView>
 
@@ -250,12 +317,8 @@ export default function Profile() {
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────────────
-
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-
-  // HERO
   hero: {
     alignItems: "center",
     paddingTop: 24,
@@ -268,7 +331,6 @@ const s = StyleSheet.create({
     width: 90,
     height: 90,
     borderRadius: 28,
-    backgroundColor: C.purpleMid,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2.5,
@@ -307,8 +369,6 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(109,40,217,0.12)",
   },
   editProfileText: { color: C.purpleGlow, fontWeight: "700", fontSize: 14 },
-
-  // STATS
   statsCard: {
     flexDirection: "row",
     marginHorizontal: 20,
@@ -329,8 +389,6 @@ const s = StyleSheet.create({
     color: C.faint,
     marginTop: 2,
   },
-
-  // TOGGLE CARD
   toggleCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -343,8 +401,6 @@ const s = StyleSheet.create({
     borderColor: C.border,
     borderRadius: 14,
   },
-
-  // MENU
   sectionLabel: {
     fontSize: 10,
     fontWeight: "700",
@@ -380,8 +436,6 @@ const s = StyleSheet.create({
   },
   menuEmoji: { fontSize: 16 },
   menuLabel: { flex: 1, fontSize: 14, fontWeight: "600", color: C.whiteSoft },
-
-  // LOGOUT
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -396,8 +450,6 @@ const s = StyleSheet.create({
     borderRadius: 14,
   },
   logoutText: { fontSize: 15, fontWeight: "700", color: "#f87171" },
-
-  // VERSION
   version: {
     textAlign: "center",
     fontSize: 11,
@@ -407,4 +459,3 @@ const s = StyleSheet.create({
     letterSpacing: 0.4,
   },
 });
-s;

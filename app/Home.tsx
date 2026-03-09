@@ -4,8 +4,8 @@
   Routing: Expo Router
 */
 
-import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
   SafeAreaView,
   ScrollView,
@@ -240,9 +240,11 @@ export function BottomNav({ active }: { active: string }) {
 export function TopBar({
   title,
   subtitle,
+  username,
 }: {
   title?: string;
   subtitle?: string;
+  username?: string;
 }) {
   return (
     <View style={s.topBar}>
@@ -251,10 +253,28 @@ export function TopBar({
           {"unimaid "}
           <Text style={s.wordmarkAccent}>resources</Text>
         </Text>
-        <Text style={s.wordmarkSub}>
-          {subtitle ?? "University of Maiduguri"}
-        </Text>
+
+        {/* Updated: show username next to university name */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={s.wordmarkSub}>
+            {subtitle ?? "University of Maiduguri"}
+          </Text>
+          {username && (
+            <>
+              <Text style={[s.wordmarkSub, { color: C.faint }]}>·</Text>
+              <Text
+                style={[
+                  s.wordmarkSub,
+                  { color: C.purpleGlow, fontWeight: "700" },
+                ]}
+              >
+                @{username}
+              </Text>
+            </>
+          )}
+        </View>
       </View>
+
       <View style={s.topActions}>
         <TouchableOpacity style={s.iconBtn}>
           <IconSearch color={C.whiteMuted} size={17} />
@@ -350,8 +370,37 @@ function ChatRow({
 
 export default function Home() {
   const router = useRouter();
+  const { user } = useLocalSearchParams(); // passed from login screen
+
+  const [currentUser, setCurrentUser] = useState<{
+    username?: string;
+    full_name?: string;
+    initials?: string;
+    color?: string;
+    online?: boolean;
+  } | null>(null);
+
+  // Parse user data passed from login
+  useEffect(() => {
+    if (user && typeof user === "string") {
+      try {
+        const parsedUser = JSON.parse(user);
+        setCurrentUser(parsedUser);
+      } catch (err) {
+        console.warn("Failed to parse user data from navigation params", err);
+      }
+    }
+  }, [user]);
+
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
+
+  // Determine what to display as username
+  const displayUsername =
+    currentUser?.username ||
+    (currentUser?.full_name
+      ? currentUser.full_name.split(" ")[0].toLowerCase()
+      : undefined);
 
   const pinned = CHATS.filter(
     (c) => c.pinned && c.name.toLowerCase().includes(query.toLowerCase()),
@@ -376,7 +425,9 @@ export default function Home() {
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
-      <TopBar />
+
+      {/* Top bar with username */}
+      <TopBar username={displayUsername} />
 
       {/* Filter Pills */}
       <View style={s.filterRow}>
