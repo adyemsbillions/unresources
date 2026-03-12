@@ -1,29 +1,31 @@
 /*
   File: app/ChatRoom.tsx
-  Purpose: Unimaid Resources — Chat Room Screen
-  Routing: Expo Router (useLocalSearchParams + useRouter)
+  Purpose: Unimaid Resources — Real Chat Room Screen with DB Messages
 */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 import { C } from "./constants/theme";
 
-// ─── SVG ICONS ───────────────────────────────────────────────────────────────
+const API_BASE = "https://unresources.cravii.ng/api";
 
-function IconBack({ color = C.whiteSoft }: { color?: string }) {
+function IconBack({ color = C.whiteSoft }) {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
       <Path
@@ -44,7 +46,7 @@ function IconBack({ color = C.whiteSoft }: { color?: string }) {
   );
 }
 
-function IconPhone({ color = C.whiteMuted }: { color?: string }) {
+function IconPhone({ color = C.whiteMuted }) {
   return (
     <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
       <Path
@@ -58,7 +60,7 @@ function IconPhone({ color = C.whiteMuted }: { color?: string }) {
   );
 }
 
-function IconVideo({ color = C.whiteMuted }: { color?: string }) {
+function IconVideo({ color = C.whiteMuted }) {
   return (
     <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
       <Polyline
@@ -82,7 +84,7 @@ function IconVideo({ color = C.whiteMuted }: { color?: string }) {
   );
 }
 
-function IconMore({ color = C.whiteMuted }: { color?: string }) {
+function IconMore({ color = C.whiteMuted }) {
   return (
     <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="5" r="1.3" fill={color} />
@@ -92,7 +94,7 @@ function IconMore({ color = C.whiteMuted }: { color?: string }) {
   );
 }
 
-function IconAttach({ color = C.faint }: { color?: string }) {
+function IconAttach({ color = C.faint }) {
   return (
     <Svg width={21} height={21} viewBox="0 0 24 24" fill="none">
       <Path
@@ -106,7 +108,7 @@ function IconAttach({ color = C.faint }: { color?: string }) {
   );
 }
 
-function IconEmoji({ color = C.faint }: { color?: string }) {
+function IconEmoji({ color = C.faint }) {
   return (
     <Svg width={21} height={21} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth={1.8} />
@@ -138,7 +140,7 @@ function IconEmoji({ color = C.faint }: { color?: string }) {
   );
 }
 
-function IconMic({ color = C.white }: { color?: string }) {
+function IconMic({ color = C.white }) {
   return (
     <Svg width={19} height={19} viewBox="0 0 24 24" fill="none">
       <Rect
@@ -178,7 +180,7 @@ function IconMic({ color = C.white }: { color?: string }) {
   );
 }
 
-function IconSend({ color = C.white }: { color?: string }) {
+function IconSend({ color = C.white }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
       <Path
@@ -199,13 +201,7 @@ function IconSend({ color = C.white }: { color?: string }) {
   );
 }
 
-function IconTick({
-  color = C.purpleGlow,
-  double = false,
-}: {
-  color?: string;
-  double?: boolean;
-}) {
+function IconTick({ color = C.purpleGlow, double = false }) {
   return (
     <Svg width={double ? 18 : 13} height={10} viewBox="0 0 22 12" fill="none">
       <Path
@@ -228,114 +224,14 @@ function IconTick({
   );
 }
 
-// ─── TYPES & MOCK ────────────────────────────────────────────────────────────
-
 type Msg = {
-  id: number;
-  text: string;
-  sent: boolean;
-  time: string;
-  read: boolean;
+  id: number | string;
+  text?: string;
+  sent?: boolean;
+  time?: string;
+  read?: boolean;
   dateSeparator?: string;
 };
-
-const INITIAL: Msg[] = [
-  {
-    id: 1,
-    text: "Hey, are you coming to the group study today?",
-    sent: false,
-    time: "10:12 AM",
-    read: true,
-    dateSeparator: "Today",
-  },
-  {
-    id: 2,
-    text: "Yes! What time are you guys starting?",
-    sent: true,
-    time: "10:14 AM",
-    read: true,
-  },
-  {
-    id: 3,
-    text: "We said 2pm at the library, room B4.",
-    sent: false,
-    time: "10:15 AM",
-    read: true,
-  },
-  {
-    id: 4,
-    text: "Perfect. I'll bring my notes on data structures.",
-    sent: true,
-    time: "10:16 AM",
-    read: true,
-  },
-  {
-    id: 5,
-    text: "Great! Can you also bring the past questions?",
-    sent: false,
-    time: "10:17 AM",
-    read: true,
-  },
-  {
-    id: 6,
-    text: "Sure, I have them from 2019 to 2023.",
-    sent: true,
-    time: "10:20 AM",
-    read: true,
-  },
-  {
-    id: 7,
-    text: "You're a lifesaver honestly.",
-    sent: false,
-    time: "10:21 AM",
-    read: true,
-  },
-  {
-    id: 8,
-    text: "Lol no problem. Has everyone confirmed attendance?",
-    sent: true,
-    time: "10:22 AM",
-    read: true,
-  },
-  {
-    id: 9,
-    text: "All 5 of us are coming. Tunde might be late though.",
-    sent: false,
-    time: "10:25 AM",
-    read: true,
-  },
-  {
-    id: 10,
-    text: "That's fine, we'll start without him.",
-    sent: true,
-    time: "10:26 AM",
-    read: true,
-  },
-  {
-    id: 11,
-    text: "Don't forget the assignment deadline tomorrow too!",
-    sent: false,
-    time: "10:40 AM",
-    read: true,
-  },
-  {
-    id: 12,
-    text: "I know I know 😅 still on question 4b",
-    sent: true,
-    time: "10:42 AM",
-    read: false,
-  },
-];
-
-const REPLIES = [
-  "Got it! See you there.",
-  "Sure, no problem at all.",
-  "Thanks for the heads up!",
-  "Okay, I'll keep that in mind.",
-  "Sounds good to me 👍",
-];
-
-// ─── DATE SEPARATOR ──────────────────────────────────────────────────────────
 
 function DateSep({ label }: { label: string }) {
   return (
@@ -346,6 +242,7 @@ function DateSep({ label }: { label: string }) {
     </View>
   );
 }
+
 const ds = StyleSheet.create({
   wrap: {
     flexDirection: "row",
@@ -362,8 +259,6 @@ const ds = StyleSheet.create({
     color: C.faint,
   },
 });
-
-// ─── BUBBLE ──────────────────────────────────────────────────────────────────
 
 function Bubble({ msg }: { msg: Msg }) {
   return (
@@ -387,6 +282,7 @@ function Bubble({ msg }: { msg: Msg }) {
     </View>
   );
 }
+
 const mb = StyleSheet.create({
   row: { flexDirection: "row", marginBottom: 3, paddingHorizontal: 14 },
   rowSent: { justifyContent: "flex-end" },
@@ -418,104 +314,281 @@ const mb = StyleSheet.create({
   time: { fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: "500" },
 });
 
-// ─── TYPING ──────────────────────────────────────────────────────────────────
-
-function Typing() {
-  return (
-    <View style={[mb.row, mb.rowRecv, { paddingBottom: 6 }]}>
-      <View style={[mb.bubble, mb.bubbleRecv, { paddingVertical: 13 }]}>
-        <View style={{ flexDirection: "row", gap: 5, alignItems: "center" }}>
-          <View style={[ty.dot, { opacity: 0.4 }]} />
-          <View style={[ty.dot, { opacity: 0.65 }]} />
-          <View style={[ty.dot, { opacity: 1.0 }]} />
-        </View>
-      </View>
-    </View>
-  );
-}
-const ty = StyleSheet.create({
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.faint },
-});
-
-// ─── MAIN ────────────────────────────────────────────────────────────────────
-
 export default function ChatRoom() {
   const router = useRouter();
+
   const params = useLocalSearchParams<{
-    id: string;
-    name: string;
-    initials: string;
-    color: string;
-    online: string;
+    id?: string;
+    name?: string;
+    initials?: string;
+    color?: string;
+    online?: string;
+    userId?: string;
+    isNew?: string;
   }>();
+
+  const rawId = params.id ?? "";
+  const otherUserId = String(
+    params.userId ||
+      (rawId.startsWith("new_") ? rawId.replace("new_", "") : rawId),
+  );
 
   const chatName = params.name ?? "Chat";
   const initials = params.initials ?? "?";
   const avatarColor = params.color ?? C.purpleMid;
   const isOnline = params.online === "1";
 
-  const [messages, setMessages] = useState<Msg[]>(INITIAL);
+  const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [typing, setTyping] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState("");
+
   const scrollRef = useRef<ScrollView>(null);
 
+  const scrollToEnd = (animated = true) => {
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated });
+    }, 100);
+  };
+
   useEffect(() => {
-    const t = setTimeout(() => setTyping(false), 2500);
-    return () => clearTimeout(t);
+    const loadCurrentUser = async () => {
+      try {
+        const storedUserId = await SecureStore.getItemAsync("user_id");
+        const storedUser = await SecureStore.getItemAsync("user");
+
+        console.log("Stored user_id:", storedUserId);
+        console.log("Stored user:", storedUser);
+        console.log("ChatRoom params:", params);
+        console.log("Resolved otherUserId:", otherUserId);
+
+        if (storedUserId && storedUserId.trim() !== "") {
+          setCurrentUserId(String(storedUserId));
+          return;
+        }
+
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          if (parsedUser?.id) {
+            setCurrentUserId(String(parsedUser.id));
+            await SecureStore.setItemAsync("user_id", String(parsedUser.id));
+            return;
+          }
+        }
+
+        setError("No logged-in user found");
+        setLoading(false);
+      } catch (err) {
+        console.log("Error loading current user:", err);
+        setError("Failed to load current user");
+        setLoading(false);
+      }
+    };
+
+    loadCurrentUser();
   }, []);
 
-  const scrollToEnd = (animated = true) =>
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated }), 80);
+  const loadMessages = async (showLoader = true) => {
+    if (!otherUserId || !currentUserId) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
-  const sendMessage = () => {
+    if (showLoader) {
+      setLoading(true);
+    }
+
+    setError(null);
+
+    try {
+      const url = `${API_BASE}/get_messages.php?id=${encodeURIComponent(
+        otherUserId,
+      )}&sender_id=${encodeURIComponent(currentUserId)}&name=${encodeURIComponent(
+        chatName,
+      )}`;
+
+      console.log("Loading chat URL:", url);
+
+      const res = await fetch(url);
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.log("Raw server response:", text);
+        throw new Error("Invalid response from server");
+      }
+
+      if (data.status === "success") {
+        const msgsWithDates: Msg[] = [];
+        let lastDate: string | null = null;
+
+        (data.messages || []).forEach((msg: any) => {
+          const msgDate = new Date(msg.created_at).toLocaleDateString();
+
+          if (msgDate !== lastDate) {
+            msgsWithDates.push({
+              id: `sep_${msgDate}`,
+              dateSeparator:
+                msgDate === new Date().toLocaleDateString() ? "Today" : msgDate,
+            });
+            lastDate = msgDate;
+          }
+
+          msgsWithDates.push({
+            id: msg.id,
+            text: msg.text,
+            sent: msg.sent,
+            time: msg.time,
+            read: msg.read,
+          });
+        });
+
+        setMessages(msgsWithDates);
+        scrollToEnd(false);
+      } else {
+        setError(data.message || "Failed to load messages");
+      }
+    } catch (err) {
+      console.error("Load messages error:", err);
+      setError("Network error");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUserId && otherUserId) {
+      loadMessages(true);
+    }
+  }, [currentUserId, otherUserId]);
+
+  useEffect(() => {
+    if (!currentUserId || !otherUserId) return;
+
+    const interval = setInterval(() => {
+      loadMessages(false);
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [currentUserId, otherUserId]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadMessages(false);
+  };
+
+  const sendMessage = async () => {
     const text = input.trim();
-    if (!text) return;
-    const now = new Date().toLocaleTimeString("en-US", {
+    if (!text || !otherUserId || !currentUserId) return;
+
+    const now = new Date();
+    const todayLabel = now.toLocaleDateString();
+    const timeStr = now.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), text, sent: true, time: now, read: false },
-    ]);
+
+    setMessages((prev) => {
+      const newMessages = [...prev];
+
+      const hasTodaySeparator = newMessages.some(
+        (item) => item.dateSeparator === "Today",
+      );
+
+      if (!hasTodaySeparator) {
+        newMessages.push({
+          id: `sep_${todayLabel}`,
+          dateSeparator: "Today",
+        });
+      }
+
+      newMessages.push({
+        id: `temp_${Date.now()}`,
+        text,
+        sent: true,
+        time: timeStr,
+        read: false,
+      });
+
+      return newMessages;
+    });
+
     setInput("");
     scrollToEnd();
-    setTyping(true);
-    setTimeout(
-      () => {
-        setTyping(false);
-        const reply = REPLIES[Math.floor(Math.random() * REPLIES.length)];
-        const rt = new Date().toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: Date.now() + 1,
-            text: reply,
-            sent: false,
-            time: rt,
-            read: true,
-          },
-        ]);
-        scrollToEnd();
-      },
-      1800 + Math.random() * 1200,
-    );
+
+    try {
+      console.log("Sending message:", {
+        sender_id: currentUserId,
+        receiver_id: otherUserId,
+        message: text,
+      });
+
+      const res = await fetch(`${API_BASE}/send_message.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender_id: Number(currentUserId),
+          receiver_id: Number(otherUserId),
+          message: text,
+        }),
+      });
+
+      const responseText = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        console.log("Raw send response:", responseText);
+        throw new Error("Invalid response from server");
+      }
+
+      if (data.status !== "success") {
+        console.error("Send failed:", data);
+        setError(data.message || "Failed to send message");
+      } else {
+        loadMessages(false);
+      }
+    } catch (err) {
+      console.error("Send error:", err);
+      setError("Failed to send message");
+    }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <ActivityIndicator
+          size="large"
+          color={C.purpleGlow}
+          style={{ flex: 1, justifyContent: "center" }}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={s.safe}>
+        <Text style={{ color: "#f87171", textAlign: "center", marginTop: 100 }}>
+          {error}
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
 
-      {/* HEADER */}
       <View style={s.header}>
-        <TouchableOpacity
-          style={s.backBtn}
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
           <IconBack />
         </TouchableOpacity>
 
@@ -547,9 +620,9 @@ export default function ChatRoom() {
           </TouchableOpacity>
         </View>
       </View>
+
       <View style={s.headerDivider} />
 
-      {/* MESSAGES */}
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -558,37 +631,47 @@ export default function ChatRoom() {
         <ScrollView
           ref={scrollRef}
           style={s.list}
-          contentContainerStyle={{ paddingTop: 10, paddingBottom: 6 }}
+          contentContainerStyle={{ paddingTop: 10, paddingBottom: 80 }}
           showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollToEnd(false)}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={C.purpleGlow}
+            />
+          }
         >
           {messages.map((msg) => (
             <React.Fragment key={msg.id}>
-              {msg.dateSeparator && <DateSep label={msg.dateSeparator} />}
-              <Bubble msg={msg} />
+              {msg.dateSeparator ? (
+                <DateSep label={msg.dateSeparator} />
+              ) : (
+                <Bubble msg={msg} />
+              )}
             </React.Fragment>
           ))}
-          {typing && <Typing />}
-          <View style={{ height: 8 }} />
+          <View style={{ height: 20 }} />
         </ScrollView>
 
-        {/* INPUT BAR */}
         <View style={s.inputBar}>
           <TouchableOpacity style={s.inputAction}>
             <IconEmoji />
           </TouchableOpacity>
+
           <TextInput
             style={s.textInput}
-            placeholder="Message…"
+            placeholder="Message..."
             placeholderTextColor={C.faint}
             value={input}
             onChangeText={setInput}
             multiline
             maxLength={500}
           />
+
           <TouchableOpacity style={s.inputAction}>
             <IconAttach />
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[s.sendBtn, input.trim().length > 0 && s.sendBtnActive]}
             onPress={sendMessage}
@@ -601,8 +684,6 @@ export default function ChatRoom() {
     </SafeAreaView>
   );
 }
-
-// ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },

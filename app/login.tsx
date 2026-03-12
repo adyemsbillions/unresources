@@ -36,16 +36,19 @@ export default function Login() {
       Alert.alert("Missing Fields", "Username and password are required.");
       return;
     }
+
     if (mode === "signup" && !email.trim()) {
       Alert.alert("Missing Fields", "Email is required for sign up.");
       return;
     }
 
     setLoading(true);
+
     try {
       let body = `action=${encodeURIComponent(mode)}`;
       body += `&username=${encodeURIComponent(username.trim())}`;
       body += `&password=${encodeURIComponent(password)}`;
+
       if (mode === "signup") {
         body += `&email=${encodeURIComponent(email.trim())}`;
       }
@@ -60,7 +63,7 @@ export default function Login() {
       });
 
       const text = await response.text();
-      console.log("LOGIN RAW RESPONSE:", text); // Debug: see exactly what server sends
+      console.log("LOGIN RAW RESPONSE:", text);
 
       let data;
       try {
@@ -73,9 +76,26 @@ export default function Login() {
 
       if (data.status === "success") {
         if (mode === "login") {
-          // Save user to SecureStore for persistence
-          await SecureStore.setItemAsync("user", JSON.stringify(data.user));
-          // Navigate to Home with user data
+          const user = data.user;
+
+          if (!user || !user.id) {
+            Alert.alert(
+              "Login Error",
+              "User data missing from server response.",
+            );
+            return;
+          }
+
+          await SecureStore.setItemAsync("user", JSON.stringify(user));
+          await SecureStore.setItemAsync("user_id", String(user.id));
+          await SecureStore.setItemAsync(
+            "username",
+            String(user.username ?? ""),
+          );
+
+          console.log("Saved user:", user);
+          console.log("Saved user_id:", String(user.id));
+
           router.replace("/Home");
         } else {
           Alert.alert("Success", "Account created! Please log in.");
@@ -110,24 +130,23 @@ export default function Login() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.pill}>
             <View style={styles.pillDot} />
             <Text style={styles.pillText}>UNIMAID RESOURCES</Text>
           </View>
+
           <Text style={styles.heading}>
             {"Welcome\n"}
             <Text style={styles.headingAccent}>Back.</Text>
           </Text>
+
           <Text style={styles.subheading}>
             Sign in to access your academic portal
           </Text>
         </View>
 
-        {/* CARD */}
         <View style={styles.card}>
-          {/* TABS */}
           <View style={styles.tabs}>
             <TouchableOpacity
               style={styles.tab}
@@ -156,7 +175,6 @@ export default function Login() {
             </TouchableOpacity>
           </View>
 
-          {/* EMAIL (hidden when login) */}
           <View
             style={mode === "signup" ? styles.fieldVisible : styles.fieldHidden}
           >
@@ -185,7 +203,6 @@ export default function Login() {
             </View>
           </View>
 
-          {/* USERNAME */}
           <View style={styles.fieldVisible}>
             <Text style={styles.label}>USERNAME</Text>
             <View
@@ -211,7 +228,6 @@ export default function Login() {
             </View>
           </View>
 
-          {/* PASSWORD */}
           <View style={styles.fieldVisible}>
             <Text style={styles.label}>PASSWORD</Text>
             <View
@@ -237,7 +253,6 @@ export default function Login() {
             </View>
           </View>
 
-          {/* BUTTON */}
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
             onPress={handleAuth}
@@ -254,7 +269,6 @@ export default function Login() {
           </TouchableOpacity>
         </View>
 
-        {/* SWITCH LINK */}
         <TouchableOpacity
           onPress={() => setMode(mode === "login" ? "signup" : "login")}
           activeOpacity={0.7}
@@ -275,7 +289,6 @@ export default function Login() {
   );
 }
 
-// ─── STYLES (unchanged) ──────────────────────────────────────────────────────
 const C = {
   bg: "#08080F",
   card: "#0F0F1C",

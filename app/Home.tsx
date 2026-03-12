@@ -1,12 +1,14 @@
 /*
-  File: app/Home.tsx  ← or app/index.tsx if this is your entry route
-  Purpose: Unimaid Resources — Chats Screen + Bottom Nav Shell
-  Routing: Expo Router
+  File: app/Home.tsx
+  Purpose: Unimaid Resources — Chats Screen with Real Database Search Suggestions
 */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  Keyboard,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -19,9 +21,10 @@ import {
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import { C, CHATS } from "./constants/theme";
 
-// ─── SVG ICONS ───────────────────────────────────────────────────────────────
+const API_BASE = "https://unresources.cravii.ng/api";
 
-function IconChat({ color, size = 21 }: { color: string; size?: number }) {
+// ─── ICONS (all defined) ────────────────────────────────────────────────────
+function IconChat({ color = C.white, size = 21 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -35,7 +38,7 @@ function IconChat({ color, size = 21 }: { color: string; size?: number }) {
   );
 }
 
-function IconStatus({ color, size = 21 }: { color: string; size?: number }) {
+function IconStatus({ color = C.white, size = 21 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth={1.8} />
@@ -49,7 +52,7 @@ function IconStatus({ color, size = 21 }: { color: string; size?: number }) {
   );
 }
 
-function IconMarket({ color, size = 21 }: { color: string; size?: number }) {
+function IconMarket({ color = C.white, size = 21 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -78,7 +81,7 @@ function IconMarket({ color, size = 21 }: { color: string; size?: number }) {
   );
 }
 
-function IconProfile({ color, size = 21 }: { color: string; size?: number }) {
+function IconProfile({ color = C.white, size = 21 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="8" r="3.5" stroke={color} strokeWidth={1.8} />
@@ -92,13 +95,7 @@ function IconProfile({ color, size = 21 }: { color: string; size?: number }) {
   );
 }
 
-function IconSearch({
-  color = C.faint,
-  size = 17,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconSearch({ color = C.faint, size = 17 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={1.9} />
@@ -115,13 +112,7 @@ function IconSearch({
   );
 }
 
-function IconBell({
-  color = C.whiteMuted,
-  size = 19,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconBell({ color = C.whiteMuted, size = 19 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -141,13 +132,7 @@ function IconBell({
   );
 }
 
-function IconEdit({
-  color = C.white,
-  size = 18,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconEdit({ color = C.white, size = 18 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -168,13 +153,7 @@ function IconEdit({
   );
 }
 
-function IconPin({
-  color = C.purpleGlow,
-  size = 12,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconPin({ color = C.purpleGlow, size = 12 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -187,7 +166,7 @@ function IconPin({
   );
 }
 
-// ─── BOTTOM NAV (shared shell, defined once here) ────────────────────────────
+// ─── BOTTOM NAV ─────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
   { id: "chats", label: "Chats", route: "/Home", badge: 3 },
@@ -196,7 +175,7 @@ const NAV_ITEMS = [
   { id: "profile", label: "Profile", route: "/Profile", badge: 0 },
 ];
 
-function NavIcon({ id, color }: { id: string; color: string }) {
+function NavIcon({ id, color }) {
   if (id === "chats") return <IconChat color={color} />;
   if (id === "status") return <IconStatus color={color} />;
   if (id === "marketplace") return <IconMarket color={color} />;
@@ -204,7 +183,7 @@ function NavIcon({ id, color }: { id: string; color: string }) {
   return null;
 }
 
-export function BottomNav({ active }: { active: string }) {
+export function BottomNav({ active }) {
   const router = useRouter();
   return (
     <View style={s.bottomNav}>
@@ -214,7 +193,7 @@ export function BottomNav({ active }: { active: string }) {
           <TouchableOpacity
             key={tab.id}
             style={s.navItem}
-            onPress={() => router.replace(tab.route as any)}
+            onPress={() => router.replace(tab.route)}
             activeOpacity={0.7}
           >
             <View style={[s.navIconWrap, isActive && s.navIconWrapActive]}>
@@ -235,17 +214,9 @@ export function BottomNav({ active }: { active: string }) {
   );
 }
 
-// ─── TOP BAR (shared) ────────────────────────────────────────────────────────
+// ─── TOP BAR ────────────────────────────────────────────────────────────────
 
-export function TopBar({
-  title,
-  subtitle,
-  username,
-}: {
-  title?: string;
-  subtitle?: string;
-  username?: string;
-}) {
+export function TopBar({ username }) {
   return (
     <View style={s.topBar}>
       <View>
@@ -254,11 +225,8 @@ export function TopBar({
           <Text style={s.wordmarkAccent}>resources</Text>
         </Text>
 
-        {/* Updated: show username next to university name */}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text style={s.wordmarkSub}>
-            {subtitle ?? "University of Maiduguri"}
-          </Text>
+          <Text style={s.wordmarkSub}>University of Maiduguri</Text>
           {username && (
             <>
               <Text style={[s.wordmarkSub, { color: C.faint }]}>·</Text>
@@ -292,7 +260,7 @@ export function TopBar({
   );
 }
 
-// ─── AVATAR (shared) ─────────────────────────────────────────────────────────
+// ─── AVATAR ─────────────────────────────────────────────────────────────────
 
 export function Avatar({
   initials,
@@ -300,12 +268,6 @@ export function Avatar({
   size = 50,
   radius = 16,
   online = false,
-}: {
-  initials: string;
-  color: string;
-  size?: number;
-  radius?: number;
-  online?: boolean;
 }) {
   return (
     <View style={{ width: size, height: size }}>
@@ -329,15 +291,9 @@ export function Avatar({
   );
 }
 
-// ─── CHAT ROW ────────────────────────────────────────────────────────────────
+// ─── CHAT ROW ───────────────────────────────────────────────────────────────
 
-function ChatRow({
-  chat,
-  onPress,
-}: {
-  chat: (typeof CHATS)[0];
-  onPress: () => void;
-}) {
+function ChatRow({ chat, onPress }) {
   return (
     <TouchableOpacity style={s.chatRow} activeOpacity={0.7} onPress={onPress}>
       <Avatar
@@ -366,50 +322,103 @@ function ChatRow({
   );
 }
 
-// ─── MAIN ────────────────────────────────────────────────────────────────────
+// ─── MAIN HOME SCREEN ───────────────────────────────────────────────────────
 
 export default function Home() {
   const router = useRouter();
-  const { user } = useLocalSearchParams(); // passed from login screen
+  const { user: passedUser } = useLocalSearchParams();
 
-  const [currentUser, setCurrentUser] = useState<{
-    username?: string;
-    full_name?: string;
-    initials?: string;
-    color?: string;
-    online?: boolean;
-  } | null>(null);
-
-  // Parse user data passed from login
-  useEffect(() => {
-    if (user && typeof user === "string") {
-      try {
-        const parsedUser = JSON.parse(user);
-        setCurrentUser(parsedUser);
-      } catch (err) {
-        console.warn("Failed to parse user data from navigation params", err);
-      }
-    }
-  }, [user]);
-
+  const [currentUser, setCurrentUser] = useState(null);
+  const [chats, setChats] = useState([]);
+  const [suggestions, setSuggestions] = useState([]); // ← for database search
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
 
-  // Determine what to display as username
+  useEffect(() => {
+    const loadUserAndChats = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        let userData = null;
+        if (passedUser && typeof passedUser === "string") {
+          userData = JSON.parse(passedUser);
+        }
+
+        if (!userData) {
+          const stored = await SecureStore.getItemAsync("user");
+          if (stored) userData = JSON.parse(stored);
+        }
+
+        setCurrentUser(userData);
+
+        // Load your existing chats (mock or real)
+        setChats(CHATS || []);
+      } catch (err) {
+        setError("Failed to load chats");
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadUserAndChats();
+  }, [passedUser]);
+
+  // Real-time suggestions from DATABASE when typing
+  useEffect(() => {
+    const searchUsers = async () => {
+      if (query.trim().length < 2) {
+        setSuggestions([]);
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/search_users.php?q=${encodeURIComponent(query.trim())}`,
+        );
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch {
+          console.error("Invalid JSON from server:", text);
+          setSuggestions([]);
+          return;
+        }
+
+        if (data.status === "success") {
+          setSuggestions(data.users || []);
+        } else {
+          setSuggestions([]);
+        }
+      } catch (err) {
+        console.error("Search error:", err);
+        setSuggestions([]);
+      }
+    };
+
+    const timeout = setTimeout(searchUsers, 500); // debounce 500ms
+    return () => clearTimeout(timeout);
+  }, [query]);
+
+  // Filter existing chats
+  const filteredChats = (chats || []).filter((chat) =>
+    chat?.name?.toLowerCase().includes(query.toLowerCase()),
+  );
+
+  const pinnedChats = filteredChats.filter((chat) => chat?.pinned);
+  const recentChats = filteredChats.filter((chat) => !chat?.pinned);
+
   const displayUsername =
     currentUser?.username ||
     (currentUser?.full_name
       ? currentUser.full_name.split(" ")[0].toLowerCase()
       : undefined);
 
-  const pinned = CHATS.filter(
-    (c) => c.pinned && c.name.toLowerCase().includes(query.toLowerCase()),
-  );
-  const recent = CHATS.filter(
-    (c) => !c.pinned && c.name.toLowerCase().includes(query.toLowerCase()),
-  );
-
-  const openChat = (chat: (typeof CHATS)[0]) => {
+  const openChat = (chat) => {
     router.push({
       pathname: "/ChatRoom",
       params: {
@@ -422,11 +431,40 @@ export default function Home() {
     });
   };
 
+  const startNewChat = (user) => {
+    router.push({
+      pathname: "/ChatRoom",
+      params: {
+        id: `new_${user.id}`,
+        name: user.full_name || user.username,
+        initials: user.initials || user.username?.slice(0, 2).toUpperCase(),
+        color: user.color || C.purpleMid,
+        online: user.online ? "1" : "0",
+        userId: user.id,
+        isNew: "true",
+      },
+    });
+    setQuery("");
+    setSuggestions([]);
+    Keyboard.dismiss();
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
+        <ActivityIndicator
+          size="large"
+          color={C.purpleGlow}
+          style={{ flex: 1, justifyContent: "center" }}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={s.safe}>
+    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
       <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
 
-      {/* Top bar with username */}
       <TopBar username={displayUsername} />
 
       {/* Filter Pills */}
@@ -449,24 +487,56 @@ export default function Home() {
         ))}
       </View>
 
-      {/* Search */}
-      <View style={s.searchBox}>
-        <IconSearch />
-        <TextInput
-          style={s.searchInput}
-          placeholder="Search conversations…"
-          placeholderTextColor={C.faint}
-          value={query}
-          onChangeText={setQuery}
-        />
+      {/* Search with suggestions */}
+      <View style={{ position: "relative" }}>
+        <View style={s.searchBox}>
+          <IconSearch color={C.faint} />
+          <TextInput
+            style={s.searchInput}
+            placeholder="Search people or chats…"
+            placeholderTextColor={C.faint}
+            value={query}
+            onChangeText={setQuery}
+          />
+        </View>
+
+        {/* Suggestion dropdown - appears only when typing */}
+        {suggestions.length > 0 && query.trim().length > 0 && (
+          <View style={s.suggestionContainer}>
+            <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }}>
+              {suggestions.map((user) => (
+                <TouchableOpacity
+                  key={user.id}
+                  style={s.suggestionRow}
+                  onPress={() => startNewChat(user)}
+                >
+                  <Avatar
+                    initials={
+                      user.initials || user.username?.slice(0, 2).toUpperCase()
+                    }
+                    color={user.color || C.purpleMid}
+                    size={40}
+                    online={user.online}
+                  />
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={s.suggestionName}>
+                      {user.full_name || user.username}
+                    </Text>
+                    <Text style={s.suggestionUsername}>@{user.username}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </View>
 
       {/* Chat List */}
       <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-        {pinned.length > 0 && (
+        {pinnedChats.length > 0 && (
           <>
             <Text style={s.sectionLabel}>PINNED</Text>
-            {pinned.map((chat) => (
+            {pinnedChats.map((chat) => (
               <ChatRow
                 key={chat.id}
                 chat={chat}
@@ -476,14 +546,20 @@ export default function Home() {
             <View style={s.divider} />
           </>
         )}
+
         <Text style={s.sectionLabel}>MESSAGES</Text>
-        {recent.map((chat) => (
-          <ChatRow key={chat.id} chat={chat} onPress={() => openChat(chat)} />
-        ))}
+        {recentChats.length === 0 ? (
+          <Text style={{ color: C.faint, textAlign: "center", marginTop: 40 }}>
+            No chats yet
+          </Text>
+        ) : (
+          recentChats.map((chat) => (
+            <ChatRow key={chat.id} chat={chat} onPress={() => openChat(chat)} />
+          ))
+        )}
         <View style={{ height: 90 }} />
       </ScrollView>
 
-      {/* Compose FAB */}
       <TouchableOpacity style={s.fab} activeOpacity={0.85}>
         <IconEdit color={C.white} size={19} />
       </TouchableOpacity>
@@ -494,7 +570,6 @@ export default function Home() {
 }
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
-
 export const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
 
@@ -583,6 +658,41 @@ export const s = StyleSheet.create({
   },
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
 
+  suggestionContainer: {
+    position: "absolute",
+    top: 52,
+    left: 20,
+    right: 20,
+    backgroundColor: C.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    zIndex: 10,
+    maxHeight: 240,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  suggestionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  suggestionName: {
+    color: C.white,
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  suggestionUsername: {
+    color: C.faint,
+    fontSize: 13,
+  },
+
   sectionLabel: {
     fontSize: 10,
     fontWeight: "700",
@@ -664,10 +774,9 @@ export const s = StyleSheet.create({
     shadowRadius: 14,
   },
 
-  // Bottom Nav (exported so other screens can copy the same styles)
   bottomNav: {
     flexDirection: "row",
-    backgroundColor: C.navBg,
+    backgroundColor: C.navBg || C.card,
     borderTopWidth: 1,
     borderTopColor: C.border,
     paddingBottom: 10,
@@ -700,7 +809,7 @@ export const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
-    borderColor: C.navBg,
+    borderColor: C.navBg || C.card,
   },
   navBadgeText: { color: C.white, fontSize: 8, fontWeight: "700" },
 });
