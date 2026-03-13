@@ -972,6 +972,7 @@ export default function Home() {
           { backgroundColor: T.purpleMid, shadowColor: T.purpleMid },
         ]}
         activeOpacity={0.85}
+        onPress={() => router.push("/people")}
       >
         <IconEdit color="#fff" size={19} />
       </TouchableOpacity>
