@@ -1,6 +1,6 @@
 /*
   File: app/Home.tsx
-  Purpose: Unimaid Resources — Chats Screen with Real Database Search Suggestions
+  Purpose: Unimaid Resources — Real Chats Home Screen
 */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -9,7 +9,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
-  SafeAreaView,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -18,12 +18,75 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path } from "react-native-svg";
-import { C, CHATS } from "./constants/theme";
+import { C } from "./constants/theme";
 
 const API_BASE = "https://unresources.cravii.ng/api";
 
-// ─── ICONS (all defined) ────────────────────────────────────────────────────
+type UserType = {
+  id: number | string;
+  username?: string;
+  full_name?: string;
+  email?: string;
+};
+
+type ChatItem = {
+  id: number | string;
+  name: string;
+  initials: string;
+  color: string;
+  online: boolean;
+  preview: string;
+  time: string;
+  unread: number;
+  pinned?: boolean;
+};
+
+type SuggestionUser = {
+  id: number | string;
+  username: string;
+  full_name?: string;
+  initials?: string;
+  color?: string;
+  online?: boolean;
+};
+
+function getInitials(name: string) {
+  const clean = (name || "").trim();
+  if (!clean) return "U";
+
+  const parts = clean.split(" ").filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
+  return clean.slice(0, 2).toUpperCase();
+}
+
+function stringToColor(text: string) {
+  const colors = [
+    "#7C3AED",
+    "#2563EB",
+    "#059669",
+    "#DC2626",
+    "#EA580C",
+    "#0891B2",
+    "#DB2777",
+    "#4F46E5",
+  ];
+
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = text.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  return colors[Math.abs(hash) % colors.length];
+}
+
 function IconChat({ color = C.white, size = 21 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -153,29 +216,14 @@ function IconEdit({ color = C.white, size = 18 }) {
   );
 }
 
-function IconPin({ color = C.purpleGlow, size = 12 }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 2l2.5 6H20l-5 3.5 2 6.5L12 14l-5 4 2-6.5L4 8h5.5z"
-        stroke={color}
-        strokeWidth={1.7}
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-// ─── BOTTOM NAV ─────────────────────────────────────────────────────────────
-
 const NAV_ITEMS = [
-  { id: "chats", label: "Chats", route: "/Home", badge: 3 },
+  { id: "chats", label: "Chats", route: "/Home", badge: 0 },
   { id: "status", label: "Status", route: "/Status", badge: 0 },
   { id: "marketplace", label: "Market", route: "/Marketplace", badge: 0 },
   { id: "profile", label: "Profile", route: "/Profile", badge: 0 },
 ];
 
-function NavIcon({ id, color }) {
+function NavIcon({ id, color }: { id: string; color: string }) {
   if (id === "chats") return <IconChat color={color} />;
   if (id === "status") return <IconStatus color={color} />;
   if (id === "marketplace") return <IconMarket color={color} />;
@@ -183,8 +231,9 @@ function NavIcon({ id, color }) {
   return null;
 }
 
-export function BottomNav({ active }) {
+function BottomNav({ active }: { active: string }) {
   const router = useRouter();
+
   return (
     <View style={s.bottomNav}>
       {NAV_ITEMS.map((tab) => {
@@ -193,7 +242,7 @@ export function BottomNav({ active }) {
           <TouchableOpacity
             key={tab.id}
             style={s.navItem}
-            onPress={() => router.replace(tab.route)}
+            onPress={() => router.replace(tab.route as any)}
             activeOpacity={0.7}
           >
             <View style={[s.navIconWrap, isActive && s.navIconWrapActive]}>
@@ -202,11 +251,6 @@ export function BottomNav({ active }) {
             <Text style={[s.navLabel, isActive && s.navLabelActive]}>
               {tab.label}
             </Text>
-            {tab.badge > 0 && (
-              <View style={s.navBadge}>
-                <Text style={s.navBadgeText}>{tab.badge}</Text>
-              </View>
-            )}
           </TouchableOpacity>
         );
       })}
@@ -214,32 +258,23 @@ export function BottomNav({ active }) {
   );
 }
 
-// ─── TOP BAR ────────────────────────────────────────────────────────────────
-
-export function TopBar({ username }) {
+function TopBar({ username }: { username?: string }) {
   return (
     <View style={s.topBar}>
-      <View>
+      <View style={{ flex: 1, paddingRight: 10 }}>
         <Text style={s.wordmark}>
-          {"unimaid "}
-          <Text style={s.wordmarkAccent}>resources</Text>
+          {"UNIMAID "}
+          <Text style={s.wordmarkAccent}>RESOURCES</Text>
         </Text>
 
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <Text style={s.wordmarkSub}>University of Maiduguri</Text>
-          {username && (
+          {username ? (
             <>
               <Text style={[s.wordmarkSub, { color: C.faint }]}>·</Text>
-              <Text
-                style={[
-                  s.wordmarkSub,
-                  { color: C.purpleGlow, fontWeight: "700" },
-                ]}
-              >
-                @{username}
-              </Text>
+              <Text style={s.usernameTag}>@{username}</Text>
             </>
-          )}
+          ) : null}
         </View>
       </View>
 
@@ -247,27 +282,26 @@ export function TopBar({ username }) {
         <TouchableOpacity style={s.iconBtn}>
           <IconSearch color={C.whiteMuted} size={17} />
         </TouchableOpacity>
-        <View>
-          <TouchableOpacity style={s.iconBtn}>
-            <IconBell color={C.whiteMuted} size={19} />
-          </TouchableOpacity>
-          <View style={s.topBadge}>
-            <Text style={s.topBadgeText}>3</Text>
-          </View>
-        </View>
+        <TouchableOpacity style={s.iconBtn}>
+          <IconBell color={C.whiteMuted} size={19} />
+        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-// ─── AVATAR ─────────────────────────────────────────────────────────────────
-
-export function Avatar({
+function Avatar({
   initials,
   color,
   size = 50,
   radius = 16,
   online = false,
+}: {
+  initials: string;
+  color: string;
+  size?: number;
+  radius?: number;
+  online?: boolean;
 }) {
   return (
     <View style={{ width: size, height: size }}>
@@ -286,55 +320,100 @@ export function Avatar({
           {initials}
         </Text>
       </View>
-      {online && <View style={s.onlineDot} />}
+      {online ? <View style={s.onlineDot} /> : null}
     </View>
   );
 }
 
-// ─── CHAT ROW ───────────────────────────────────────────────────────────────
-
-function ChatRow({ chat, onPress }) {
+function ChatRow({ chat, onPress }: { chat: ChatItem; onPress: () => void }) {
   return (
-    <TouchableOpacity style={s.chatRow} activeOpacity={0.7} onPress={onPress}>
+    <TouchableOpacity style={s.chatRow} activeOpacity={0.75} onPress={onPress}>
       <Avatar
         initials={chat.initials}
         color={chat.color}
         online={chat.online}
       />
+
       <View style={s.chatInfo}>
         <View style={s.chatNameRow}>
-          <Text style={s.chatName}>{chat.name}</Text>
-          {chat.pinned && <IconPin />}
+          <Text style={s.chatName} numberOfLines={1}>
+            {chat.name}
+          </Text>
+          <Text style={s.chatTimeMobile}>{chat.time}</Text>
         </View>
-        <Text style={s.chatPreview} numberOfLines={1}>
-          {chat.preview}
-        </Text>
+
+        <View style={s.previewRow}>
+          <Text style={s.chatPreview} numberOfLines={1}>
+            {chat.preview || "Start a conversation"}
+          </Text>
+          {chat.unread > 0 ? (
+            <View style={s.unreadBadge}>
+              <Text style={s.unreadText}>{chat.unread}</Text>
+            </View>
+          ) : null}
+        </View>
       </View>
+
       <View style={s.chatMeta}>
         <Text style={s.chatTime}>{chat.time}</Text>
-        {chat.unread > 0 && (
+        {chat.unread > 0 ? (
           <View style={s.unreadBadge}>
             <Text style={s.unreadText}>{chat.unread}</Text>
           </View>
-        )}
+        ) : null}
       </View>
     </TouchableOpacity>
   );
 }
 
-// ─── MAIN HOME SCREEN ───────────────────────────────────────────────────────
-
 export default function Home() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user: passedUser } = useLocalSearchParams();
 
-  const [currentUser, setCurrentUser] = useState(null);
-  const [chats, setChats] = useState([]);
-  const [suggestions, setSuggestions] = useState([]); // ← for database search
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [suggestions, setSuggestions] = useState<SuggestionUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
+
+  const loadChatList = async (userId: string) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/get_chat_list.php?user_id=${encodeURIComponent(userId)}`,
+      );
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.log("Invalid get_chat_list response:", text);
+        return;
+      }
+
+      if (data.status === "success") {
+        const mapped: ChatItem[] = (data.chats || []).map((chat: any) => ({
+          id: chat.id,
+          name: chat.name,
+          initials: chat.initials || getInitials(chat.name),
+          color: chat.color || stringToColor(chat.name),
+          online: !!chat.online,
+          preview: chat.preview || "",
+          time: chat.time || "",
+          unread: Number(chat.unread || 0),
+          pinned: false,
+        }));
+
+        setChats(mapped);
+      }
+    } catch (err) {
+      console.error("Chat list error:", err);
+    }
+  };
 
   useEffect(() => {
     const loadUserAndChats = async () => {
@@ -342,7 +421,8 @@ export default function Home() {
       setError(null);
 
       try {
-        let userData = null;
+        let userData: UserType | null = null;
+
         if (passedUser && typeof passedUser === "string") {
           userData = JSON.parse(passedUser);
         }
@@ -352,10 +432,16 @@ export default function Home() {
           if (stored) userData = JSON.parse(stored);
         }
 
-        setCurrentUser(userData);
+        if (!userData?.id) {
+          setError("No logged-in user found");
+          setLoading(false);
+          return;
+        }
 
-        // Load your existing chats (mock or real)
-        setChats(CHATS || []);
+        setCurrentUser(userData);
+        setCurrentUserId(String(userData.id));
+
+        await loadChatList(String(userData.id));
       } catch (err) {
         setError("Failed to load chats");
         console.error(err);
@@ -367,7 +453,16 @@ export default function Home() {
     loadUserAndChats();
   }, [passedUser]);
 
-  // Real-time suggestions from DATABASE when typing
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    const interval = setInterval(() => {
+      loadChatList(currentUserId);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [currentUserId]);
+
   useEffect(() => {
     const searchUsers = async () => {
       if (query.trim().length < 2) {
@@ -380,17 +475,22 @@ export default function Home() {
           `${API_BASE}/search_users.php?q=${encodeURIComponent(query.trim())}`,
         );
         const text = await res.text();
+
+        console.log("SERVER RESPONSE:", text);
+
         let data;
         try {
           data = JSON.parse(text);
-        } catch {
-          console.error("Invalid JSON from server:", text);
-          setSuggestions([]);
+        } catch (e) {
+          console.log("JSON ERROR:", e);
           return;
         }
 
         if (data.status === "success") {
-          setSuggestions(data.users || []);
+          const users = (data.users || []).filter(
+            (u: SuggestionUser) => String(u.id) !== String(currentUserId),
+          );
+          setSuggestions(users);
         } else {
           setSuggestions([]);
         }
@@ -400,29 +500,34 @@ export default function Home() {
       }
     };
 
-    const timeout = setTimeout(searchUsers, 500); // debounce 500ms
+    const timeout = setTimeout(searchUsers, 400);
     return () => clearTimeout(timeout);
-  }, [query]);
+  }, [query, currentUserId]);
 
-  // Filter existing chats
-  const filteredChats = (chats || []).filter((chat) =>
-    chat?.name?.toLowerCase().includes(query.toLowerCase()),
-  );
+  const displayUsername = currentUser?.username;
 
-  const pinnedChats = filteredChats.filter((chat) => chat?.pinned);
-  const recentChats = filteredChats.filter((chat) => !chat?.pinned);
+  let filteredChats = [...chats];
 
-  const displayUsername =
-    currentUser?.username ||
-    (currentUser?.full_name
-      ? currentUser.full_name.split(" ")[0].toLowerCase()
-      : undefined);
+  if (query.trim()) {
+    filteredChats = filteredChats.filter((chat) =>
+      chat.name.toLowerCase().includes(query.toLowerCase()),
+    );
+  }
 
-  const openChat = (chat) => {
+  if (activeFilter === "Unread") {
+    filteredChats = filteredChats.filter((chat) => chat.unread > 0);
+  }
+
+  if (activeFilter === "Groups") {
+    filteredChats = [];
+  }
+
+  const openChat = (chat: ChatItem) => {
     router.push({
       pathname: "/ChatRoom",
       params: {
         id: String(chat.id),
+        userId: String(chat.id),
         name: chat.name,
         initials: chat.initials,
         color: chat.color,
@@ -431,19 +536,22 @@ export default function Home() {
     });
   };
 
-  const startNewChat = (user) => {
+  const startNewChat = (user: SuggestionUser) => {
+    const name = user.full_name || user.username;
+
     router.push({
       pathname: "/ChatRoom",
       params: {
         id: `new_${user.id}`,
-        name: user.full_name || user.username,
-        initials: user.initials || user.username?.slice(0, 2).toUpperCase(),
-        color: user.color || C.purpleMid,
+        name,
+        initials: user.initials || getInitials(name),
+        color: user.color || stringToColor(name),
         online: user.online ? "1" : "0",
-        userId: user.id,
+        userId: String(user.id),
         isNew: "true",
       },
     });
+
     setQuery("");
     setSuggestions([]);
     Keyboard.dismiss();
@@ -451,7 +559,8 @@ export default function Home() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
+      <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
         <ActivityIndicator
           size="large"
           color={C.purpleGlow}
@@ -461,13 +570,29 @@ export default function Home() {
     );
   }
 
+  if (error) {
+    return (
+      <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+        <Text style={{ color: "#f87171", textAlign: "center", marginTop: 100 }}>
+          {error}
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
+    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-      <TopBar username={displayUsername} />
+      <View
+        style={{
+          paddingTop: Platform.OS === "android" ? 2 : 0,
+        }}
+      >
+        <TopBar username={displayUsername} />
+      </View>
 
-      {/* Filter Pills */}
       <View style={s.filterRow}>
         {["All", "Unread", "Groups"].map((t) => (
           <TouchableOpacity
@@ -487,77 +612,68 @@ export default function Home() {
         ))}
       </View>
 
-      {/* Search with suggestions */}
       <View style={{ position: "relative" }}>
         <View style={s.searchBox}>
           <IconSearch color={C.faint} />
           <TextInput
             style={s.searchInput}
-            placeholder="Search people or chats…"
+            placeholder="Search people or chats"
             placeholderTextColor={C.faint}
             value={query}
             onChangeText={setQuery}
           />
         </View>
 
-        {/* Suggestion dropdown - appears only when typing */}
-        {suggestions.length > 0 && query.trim().length > 0 && (
+        {suggestions.length > 0 && query.trim().length > 0 ? (
           <View style={s.suggestionContainer}>
             <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }}>
-              {suggestions.map((user) => (
-                <TouchableOpacity
-                  key={user.id}
-                  style={s.suggestionRow}
-                  onPress={() => startNewChat(user)}
-                >
-                  <Avatar
-                    initials={
-                      user.initials || user.username?.slice(0, 2).toUpperCase()
-                    }
-                    color={user.color || C.purpleMid}
-                    size={40}
-                    online={user.online}
-                  />
-                  <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={s.suggestionName}>
-                      {user.full_name || user.username}
-                    </Text>
-                    <Text style={s.suggestionUsername}>@{user.username}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
+              {suggestions.map((user) => {
+                const name = user.full_name || user.username;
+                return (
+                  <TouchableOpacity
+                    key={String(user.id)}
+                    style={s.suggestionRow}
+                    onPress={() => startNewChat(user)}
+                  >
+                    <Avatar
+                      initials={user.initials || getInitials(name)}
+                      color={user.color || stringToColor(name)}
+                      size={40}
+                      radius={13}
+                      online={!!user.online}
+                    />
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Text style={s.suggestionName}>{name}</Text>
+                      <Text style={s.suggestionUsername}>@{user.username}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
-        )}
+        ) : null}
       </View>
 
-      {/* Chat List */}
-      <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-        {pinnedChats.length > 0 && (
-          <>
-            <Text style={s.sectionLabel}>PINNED</Text>
-            {pinnedChats.map((chat) => (
-              <ChatRow
-                key={chat.id}
-                chat={chat}
-                onPress={() => openChat(chat)}
-              />
-            ))}
-            <View style={s.divider} />
-          </>
-        )}
-
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 110 }}
+      >
         <Text style={s.sectionLabel}>MESSAGES</Text>
-        {recentChats.length === 0 ? (
+
+        {filteredChats.length === 0 ? (
           <Text style={{ color: C.faint, textAlign: "center", marginTop: 40 }}>
             No chats yet
           </Text>
         ) : (
-          recentChats.map((chat) => (
-            <ChatRow key={chat.id} chat={chat} onPress={() => openChat(chat)} />
+          filteredChats.map((chat) => (
+            <ChatRow
+              key={String(chat.id)}
+              chat={chat}
+              onPress={() => openChat(chat)}
+            />
           ))
         )}
-        <View style={{ height: 90 }} />
       </ScrollView>
 
       <TouchableOpacity style={s.fab} activeOpacity={0.85}>
@@ -569,7 +685,6 @@ export default function Home() {
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────────────
 export const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
 
@@ -578,49 +693,52 @@ export const s = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: 2,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
+
   wordmark: {
-    fontSize: 19,
-    fontWeight: "800",
+    fontSize: 21,
+    fontWeight: "900",
     color: C.white,
-    letterSpacing: -0.3,
+    letterSpacing: 0.6,
   },
-  wordmarkAccent: { color: C.purpleGlow, fontWeight: "800" },
+
+  wordmarkAccent: {
+    color: C.purpleGlow,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+
   wordmarkSub: {
     fontSize: 11,
     color: C.faint,
-    marginTop: 1,
-    letterSpacing: 0.3,
+    marginTop: 2,
+    letterSpacing: 0.4,
   },
+
+  usernameTag: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+
   topActions: { flexDirection: "row", gap: 8 },
+
   iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  topBadge: {
-    position: "absolute",
-    top: -2,
-    right: -2,
-    width: 15,
-    height: 15,
-    borderRadius: 8,
-    backgroundColor: C.purpleMid,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: C.bg,
-  },
-  topBadgeText: { color: C.white, fontSize: 8, fontWeight: "700" },
 
   filterRow: {
     flexDirection: "row",
@@ -628,18 +746,21 @@ export const s = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
   },
+
   filterPill: {
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: 20,
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.border,
   },
+
   filterPillActive: {
     backgroundColor: C.purpleFaint,
     borderColor: C.purpleMid,
   },
+
   filterPillText: { color: C.faint, fontSize: 13, fontWeight: "600" },
   filterPillTextActive: { color: C.purpleGlow, fontWeight: "700" },
 
@@ -652,19 +773,20 @@ export const s = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: 14,
-    height: 44,
+    height: 46,
   },
+
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
 
   suggestionContainer: {
     position: "absolute",
-    top: 52,
+    top: 54,
     left: 20,
     right: 20,
     backgroundColor: C.card,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: C.border,
     zIndex: 10,
@@ -676,6 +798,7 @@ export const s = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
+
   suggestionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -683,11 +806,13 @@ export const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
+
   suggestionName: {
     color: C.white,
     fontWeight: "600",
     fontSize: 15,
   },
+
   suggestionUsername: {
     color: C.faint,
     fontSize: 13,
@@ -699,18 +824,14 @@ export const s = StyleSheet.create({
     letterSpacing: 1.4,
     color: C.faint,
     paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 5,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: C.border,
-    marginHorizontal: 20,
-    marginVertical: 6,
+    paddingTop: 12,
+    paddingBottom: 6,
   },
 
   avatarBase: { alignItems: "center", justifyContent: "center" },
+
   avatarText: { color: C.white, fontWeight: "700" },
+
   onlineDot: {
     position: "absolute",
     bottom: 0,
@@ -727,25 +848,54 @@ export const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingVertical: 11,
+    paddingVertical: 12,
     gap: 13,
   },
-  chatInfo: { flex: 1 },
+
+  chatInfo: { flex: 1, minWidth: 0 },
+
   chatNameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 3,
+    justifyContent: "space-between",
+    gap: 10,
+    marginBottom: 4,
   },
-  chatName: { fontSize: 15, fontWeight: "700", color: C.whiteSoft },
+
+  chatName: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    flex: 1,
+    letterSpacing: 0.3,
+  },
+  previewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
   chatPreview: {
     fontSize: 13,
     color: C.faint,
-    fontStyle: "italic",
     lineHeight: 18,
+    flex: 1,
   },
-  chatMeta: { alignItems: "flex-end", gap: 5 },
-  chatTime: { fontSize: 11, color: C.faint },
+
+  chatMeta: {
+    alignItems: "flex-end",
+    gap: 6,
+  },
+
+  chatTime: {
+    fontSize: 11,
+    color: C.faint,
+  },
+
+  chatTimeMobile: {
+    display: "none" as any,
+  },
+
   unreadBadge: {
     backgroundColor: C.purpleMid,
     borderRadius: 7,
@@ -755,15 +905,20 @@ export const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 5,
   },
-  unreadText: { color: C.white, fontSize: 10, fontWeight: "700" },
+
+  unreadText: {
+    color: C.white,
+    fontSize: 10,
+    fontWeight: "700",
+  },
 
   fab: {
     position: "absolute",
-    bottom: 80,
+    bottom: 84,
     right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: 54,
+    height: 54,
+    borderRadius: 18,
     backgroundColor: C.purpleMid,
     alignItems: "center",
     justifyContent: "center",
@@ -782,7 +937,9 @@ export const s = StyleSheet.create({
     paddingBottom: 10,
     paddingTop: 8,
   },
+
   navItem: { flex: 1, alignItems: "center", gap: 4, position: "relative" },
+
   navIconWrap: {
     width: 46,
     height: 30,
@@ -790,26 +947,15 @@ export const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   navIconWrapActive: { backgroundColor: "rgba(109,40,217,0.28)" },
+
   navLabel: {
     fontSize: 10,
     fontWeight: "600",
     color: C.faint,
     letterSpacing: 0.2,
   },
+
   navLabelActive: { color: C.purpleGlow, fontWeight: "700" },
-  navBadge: {
-    position: "absolute",
-    top: 0,
-    right: 10,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: C.purpleMid,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1.5,
-    borderColor: C.navBg || C.card,
-  },
-  navBadgeText: { color: C.white, fontSize: 8, fontWeight: "700" },
 });

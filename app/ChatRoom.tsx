@@ -11,7 +11,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -20,6 +19,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 import { C } from "./constants/theme";
 
@@ -284,26 +287,26 @@ function Bubble({ msg }: { msg: Msg }) {
 }
 
 const mb = StyleSheet.create({
-  row: { flexDirection: "row", marginBottom: 3, paddingHorizontal: 14 },
+  row: { flexDirection: "row", marginBottom: 4, paddingHorizontal: 14 },
   rowSent: { justifyContent: "flex-end" },
   rowRecv: { justifyContent: "flex-start" },
   bubble: {
-    maxWidth: "78%",
+    maxWidth: "80%",
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingTop: 10,
     paddingBottom: 8,
   },
-  bubbleSent: { backgroundColor: "#5b21b6", borderBottomRightRadius: 4 },
+  bubbleSent: { backgroundColor: "#5b21b6", borderBottomRightRadius: 5 },
   bubbleRecv: {
-    backgroundColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: C.border,
-    borderBottomLeftRadius: 4,
+    borderBottomLeftRadius: 5,
   },
   text: { fontSize: 15, lineHeight: 21 },
-  textSent: { color: "rgba(255,255,255,0.93)" },
-  textRecv: { color: "rgba(255,255,255,0.80)" },
+  textSent: { color: "rgba(255,255,255,0.95)" },
+  textRecv: { color: "rgba(255,255,255,0.82)" },
   footer: {
     flexDirection: "row",
     alignItems: "center",
@@ -311,11 +314,12 @@ const mb = StyleSheet.create({
     marginTop: 5,
     gap: 3,
   },
-  time: { fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: "500" },
+  time: { fontSize: 10, color: "rgba(255,255,255,0.38)", fontWeight: "500" },
 });
 
 export default function ChatRoom() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const params = useLocalSearchParams<{
     id?: string;
@@ -358,11 +362,6 @@ export default function ChatRoom() {
       try {
         const storedUserId = await SecureStore.getItemAsync("user_id");
         const storedUser = await SecureStore.getItemAsync("user");
-
-        console.log("Stored user_id:", storedUserId);
-        console.log("Stored user:", storedUser);
-        console.log("ChatRoom params:", params);
-        console.log("Resolved otherUserId:", otherUserId);
 
         if (storedUserId && storedUserId.trim() !== "") {
           setCurrentUserId(String(storedUserId));
@@ -409,8 +408,6 @@ export default function ChatRoom() {
       )}&sender_id=${encodeURIComponent(currentUserId)}&name=${encodeURIComponent(
         chatName,
       )}`;
-
-      console.log("Loading chat URL:", url);
 
       const res = await fetch(url);
       const text = await res.text();
@@ -523,12 +520,6 @@ export default function ChatRoom() {
     scrollToEnd();
 
     try {
-      console.log("Sending message:", {
-        sender_id: currentUserId,
-        receiver_id: otherUserId,
-        message: text,
-      });
-
       const res = await fetch(`${API_BASE}/send_message.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -563,7 +554,8 @@ export default function ChatRoom() {
 
   if (loading) {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
         <ActivityIndicator
           size="large"
           color={C.purpleGlow}
@@ -575,7 +567,8 @@ export default function ChatRoom() {
 
   if (error) {
     return (
-      <SafeAreaView style={s.safe}>
+      <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
         <Text style={{ color: "#f87171", textAlign: "center", marginTop: 100 }}>
           {error}
         </Text>
@@ -584,54 +577,69 @@ export default function ChatRoom() {
   }
 
   return (
-    <SafeAreaView style={s.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bgDeep} />
+    <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
 
-      <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
-          <IconBack />
-        </TouchableOpacity>
+      <View
+        style={[
+          s.headerWrap,
+          {
+            paddingTop: Platform.OS === "android" ? Math.max(insets.top, 8) : 0,
+          },
+        ]}
+      >
+        <View style={s.header}>
+          <TouchableOpacity style={s.backBtn} onPress={() => router.back()}>
+            <IconBack />
+          </TouchableOpacity>
 
-        <View style={s.headerAvatarWrap}>
-          <View style={[s.headerAvatar, { backgroundColor: avatarColor }]}>
-            <Text style={s.headerAvatarText}>{initials}</Text>
+          <View style={s.headerAvatarWrap}>
+            <View style={[s.headerAvatar, { backgroundColor: avatarColor }]}>
+              <Text style={s.headerAvatarText}>{initials}</Text>
+            </View>
+            {isOnline && <View style={s.onlineDot} />}
           </View>
-          {isOnline && <View style={s.onlineDot} />}
+
+          <View style={s.headerInfo}>
+            <Text style={s.headerName} numberOfLines={1}>
+              {chatName}
+            </Text>
+            <Text
+              style={[s.headerSub, { color: isOnline ? C.online : C.faint }]}
+              numberOfLines={1}
+            >
+              {isOnline ? "Online now" : "Last seen recently"}
+            </Text>
+          </View>
+
+          <View style={s.headerActions}>
+            <TouchableOpacity style={s.hBtn}>
+              <IconPhone />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.hBtn}>
+              <IconVideo />
+            </TouchableOpacity>
+            <TouchableOpacity style={s.hBtn}>
+              <IconMore />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={s.headerInfo}>
-          <Text style={s.headerName} numberOfLines={1}>
-            {chatName}
-          </Text>
-          <Text style={[s.headerSub, { color: isOnline ? C.online : C.faint }]}>
-            {isOnline ? "Online now" : "Last seen recently"}
-          </Text>
-        </View>
-
-        <View style={s.headerActions}>
-          <TouchableOpacity style={s.hBtn}>
-            <IconPhone />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.hBtn}>
-            <IconVideo />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.hBtn}>
-            <IconMore />
-          </TouchableOpacity>
-        </View>
+        <View style={s.headerDivider} />
       </View>
-
-      <View style={s.headerDivider} />
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+        keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
       >
         <ScrollView
           ref={scrollRef}
           style={s.list}
-          contentContainerStyle={{ paddingTop: 10, paddingBottom: 80 }}
+          contentContainerStyle={{
+            paddingTop: 10,
+            paddingBottom: Math.max(insets.bottom + 70, 90),
+          }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -653,14 +661,21 @@ export default function ChatRoom() {
           <View style={{ height: 20 }} />
         </ScrollView>
 
-        <View style={s.inputBar}>
+        <View
+          style={[
+            s.inputBar,
+            {
+              paddingBottom: Math.max(insets.bottom, 10),
+            },
+          ]}
+        >
           <TouchableOpacity style={s.inputAction}>
             <IconEmoji />
           </TouchableOpacity>
 
           <TextInput
             style={s.textInput}
-            placeholder="Message..."
+            placeholder="Type a message"
             placeholderTextColor={C.faint}
             value={input}
             onChangeText={setInput}
@@ -686,23 +701,37 @@ export default function ChatRoom() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+  safe: {
+    flex: 1,
+    backgroundColor: C.bg,
+  },
+
+  headerWrap: {
+    backgroundColor: C.bg,
+  },
 
   header: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingBottom: 10,
     gap: 10,
+    minHeight: 62,
   },
+
   backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 11,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.04)",
   },
-  headerAvatarWrap: { position: "relative" },
+
+  headerAvatarWrap: {
+    position: "relative",
+  },
+
   headerAvatar: {
     width: 42,
     height: 42,
@@ -710,7 +739,13 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  headerAvatarText: { color: C.white, fontWeight: "700", fontSize: 15 },
+
+  headerAvatarText: {
+    color: C.white,
+    fontWeight: "700",
+    fontSize: 15,
+  },
+
   onlineDot: {
     position: "absolute",
     bottom: 0,
@@ -722,10 +757,31 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: C.bg,
   },
-  headerInfo: { flex: 1 },
-  headerName: { fontSize: 16, fontWeight: "700", color: C.white },
-  headerSub: { fontSize: 12, fontWeight: "500", marginTop: 1 },
-  headerActions: { flexDirection: "row", gap: 6 },
+
+  headerInfo: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "center",
+  },
+
+  headerName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: C.white,
+  },
+
+  headerSub: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginTop: 1,
+  },
+
+  headerActions: {
+    flexDirection: "row",
+    gap: 6,
+    flexShrink: 0,
+  },
+
   hBtn: {
     width: 36,
     height: 36,
@@ -736,26 +792,34 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: C.border,
   },
-  headerDivider: { height: 1, backgroundColor: C.border },
 
-  list: { flex: 1 },
+  headerDivider: {
+    height: 1,
+    backgroundColor: C.border,
+  },
+
+  list: {
+    flex: 1,
+  },
 
   inputBar: {
     flexDirection: "row",
     alignItems: "flex-end",
     paddingHorizontal: 10,
-    paddingVertical: 10,
+    paddingTop: 10,
     gap: 6,
     backgroundColor: "#100820",
     borderTopWidth: 1,
     borderTopColor: C.border,
   },
+
   inputAction: {
     width: 38,
     height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
+
   textInput: {
     flex: 1,
     minHeight: 44,
@@ -763,7 +827,7 @@ const s = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 12,
@@ -771,14 +835,16 @@ const s = StyleSheet.create({
     fontSize: 15,
     lineHeight: 20,
   },
+
   sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     backgroundColor: "rgba(124,58,237,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
+
   sendBtnActive: {
     backgroundColor: C.purpleMid,
     elevation: 4,
