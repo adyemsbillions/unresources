@@ -13,7 +13,6 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -24,8 +23,14 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
-import { BottomNav, TopBar } from "./Home";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import Svg, { Circle, Line, Path } from "react-native-svg";
+import { BottomNav } from "./Home";
+
+const API_BASE = "https://unresources.cravii.ng/api";
 
 // ─── THEME DEFINITIONS ──────────────────────────────────────────────────────
 const lightTheme = {
@@ -60,8 +65,23 @@ const darkTheme = {
   online: "#00C853",
 };
 
+type ThemeType = typeof darkTheme;
+
+type UserType = {
+  id?: number | string;
+  username?: string;
+  full_name?: string;
+  bio?: string;
+  department?: string;
+  level?: string;
+  initials?: string;
+  color?: string;
+  avatar_url?: string;
+  email?: string;
+};
+
 // ─── ICONS ──────────────────────────────────────────────────────────────────
-const IconEdit = ({ color, size = 14 }) => (
+const IconEdit = ({ color, size = 14 }: { color: string; size?: number }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
@@ -80,7 +100,13 @@ const IconEdit = ({ color, size = 14 }) => (
   </Svg>
 );
 
-const IconChevron = ({ color, size = 18 }) => (
+const IconChevron = ({
+  color,
+  size = 18,
+}: {
+  color: string;
+  size?: number;
+}) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M9 18l6-6-6-6"
@@ -92,7 +118,13 @@ const IconChevron = ({ color, size = 18 }) => (
   </Svg>
 );
 
-const IconLogout = ({ color = "#f87171", size = 17 }) => (
+const IconLogout = ({
+  color = "#f87171",
+  size = 17,
+}: {
+  color?: string;
+  size?: number;
+}) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
     <Path
       d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
@@ -117,6 +149,106 @@ const IconLogout = ({ color = "#f87171", size = 17 }) => (
     />
   </Svg>
 );
+
+const IconSearch = ({ color, size = 17 }: { color: string; size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={1.9} />
+    <Line
+      x1="16.5"
+      y1="16.5"
+      x2="22"
+      y2="22"
+      stroke={color}
+      strokeWidth={1.9}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+const IconBell = ({ color, size = 19 }: { color: string; size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M13.73 21a2 2 0 0 1-3.46 0"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+
+// ─── TOP BAR ────────────────────────────────────────────────────────────────
+function ProfileTopBar({
+  username,
+  theme,
+}: {
+  username?: string;
+  theme: ThemeType;
+}) {
+  return (
+    <View
+      style={[
+        s.topBar,
+        {
+          backgroundColor: theme.bg,
+          borderBottomColor: theme.border,
+        },
+      ]}
+    >
+      <View style={{ flex: 1, paddingRight: 10 }}>
+        <Text style={[s.wordmark, { color: theme.white }]}>
+          PROFILE{" "}
+          <Text style={[s.wordmarkAccent, { color: theme.purpleGlow }]}>
+            SETTINGS
+          </Text>
+        </Text>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={[s.wordmarkSub, { color: theme.faint }]}>
+            University of Maiduguri
+          </Text>
+          {username ? (
+            <>
+              <Text style={[s.wordmarkSub, { color: theme.faint }]}>·</Text>
+              <Text
+                style={[s.usernameTag, { color: theme.white }]}
+                numberOfLines={1}
+              >
+                @{username}
+              </Text>
+            </>
+          ) : null}
+        </View>
+      </View>
+
+      <View style={s.topActions}>
+        <TouchableOpacity
+          style={[
+            s.iconBtn,
+            { backgroundColor: theme.card, borderColor: theme.border },
+          ]}
+        >
+          <IconSearch color={theme.whiteMuted} size={17} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            s.iconBtn,
+            { backgroundColor: theme.card, borderColor: theme.border },
+          ]}
+        >
+          <IconBell color={theme.whiteMuted} size={19} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
 // ─── MENU & STAT ────────────────────────────────────────────────────────────
 const MENU_SECTIONS = [
@@ -145,7 +277,15 @@ const MENU_SECTIONS = [
   },
 ];
 
-function StatBox({ value, label, theme }) {
+function StatBox({
+  value,
+  label,
+  theme,
+}: {
+  value: string;
+  label: string;
+  theme: ThemeType;
+}) {
   return (
     <View style={[s.statBox, { backgroundColor: theme.card }]}>
       <Text style={[s.statNum, { color: theme.white }]}>{value}</Text>
@@ -154,7 +294,13 @@ function StatBox({ value, label, theme }) {
   );
 }
 
-function MenuItem({ item, theme }) {
+function MenuItem({
+  item,
+  theme,
+}: {
+  item: { icon: string; label: string; bg: string; arrow?: boolean };
+  theme: ThemeType;
+}) {
   return (
     <TouchableOpacity style={s.menuItem} activeOpacity={0.72}>
       <View style={[s.menuIconBox, { backgroundColor: item.bg }]}>
@@ -163,25 +309,24 @@ function MenuItem({ item, theme }) {
       <Text style={[s.menuLabel, { color: theme.whiteMuted }]}>
         {item.label}
       </Text>
-      {item.arrow && <IconChevron color={theme.faint} />}
+      {item.arrow ? <IconChevron color={theme.faint} /> : null}
     </TouchableOpacity>
   );
 }
 
 export default function Profile() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user: passedUser } = useLocalSearchParams();
 
-  // Theme state (saved in SecureStore)
   const [isDark, setIsDark] = useState(true);
   const theme = isDark ? darkTheme : lightTheme;
 
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
-  // Edit modal state
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: "",
@@ -193,25 +338,31 @@ export default function Profile() {
     avatar_url: "",
   });
 
-  // Load saved theme preference
   useEffect(() => {
     const loadTheme = async () => {
-      const saved = await SecureStore.getItemAsync("theme_preference");
-      if (saved !== null) {
-        setIsDark(saved === "dark");
+      try {
+        const saved = await SecureStore.getItemAsync("theme_preference");
+        if (saved !== null) {
+          setIsDark(saved === "dark");
+        }
+      } catch (err) {
+        console.log("Theme load error:", err);
       }
     };
     loadTheme();
   }, []);
 
-  // Save theme when changed
   const toggleTheme = async () => {
-    const newDark = !isDark;
-    setIsDark(newDark);
-    await SecureStore.setItemAsync(
-      "theme_preference",
-      newDark ? "dark" : "light",
-    );
+    try {
+      const newDark = !isDark;
+      setIsDark(newDark);
+      await SecureStore.setItemAsync(
+        "theme_preference",
+        newDark ? "dark" : "light",
+      );
+    } catch (err) {
+      console.log("Theme save error:", err);
+    }
   };
 
   useEffect(() => {
@@ -220,7 +371,7 @@ export default function Profile() {
       setError(null);
 
       try {
-        let userData = null;
+        let userData: UserType | null = null;
 
         if (passedUser && typeof passedUser === "string") {
           userData = JSON.parse(passedUser);
@@ -290,12 +441,17 @@ export default function Profile() {
       }
 
       if (data.status === "success") {
-        const updatedUser = {
+        const updatedUser: UserType = {
           ...currentUser,
-          ...body,
           full_name: body.name,
+          bio: body.bio,
+          department: body.department,
+          level: body.level,
+          initials: body.initials,
           color: body.accent_color,
+          avatar_url: body.profile_picture,
         };
+
         setCurrentUser(updatedUser);
         await SecureStore.setItemAsync("user", JSON.stringify(updatedUser));
         setEditModalVisible(false);
@@ -317,28 +473,38 @@ export default function Profile() {
         style: "destructive",
         onPress: async () => {
           await SecureStore.deleteItemAsync("user");
-          router.replace("/login"); // ← adjust if needed
+          await SecureStore.deleteItemAsync("user_id");
+          await SecureStore.deleteItemAsync("username");
+          router.replace("/login");
         },
       },
     ]);
   };
 
-  // Display values
   const name = currentUser?.full_name || currentUser?.username || "Guest";
   const handleText = currentUser?.username
     ? `@${currentUser.username}`
     : "@unknown";
+
   const bioText = currentUser?.bio || "No bio set yet.";
   const deptLevel =
     currentUser?.department && currentUser?.level
       ? `${currentUser.department} ${currentUser.level}`
       : "Unknown";
+
   const initials = currentUser?.initials || name.charAt(0).toUpperCase() || "?";
   const avatarColor = currentUser?.color || theme.purpleMid;
 
   if (loading) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]}>
+      <SafeAreaView
+        style={[s.safe, { backgroundColor: theme.bg }]}
+        edges={["top"]}
+      >
+        <StatusBar
+          barStyle={isDark ? "light-content" : "dark-content"}
+          backgroundColor={theme.bg}
+        />
         <ActivityIndicator
           size="large"
           color={theme.purpleGlow}
@@ -349,24 +515,49 @@ export default function Profile() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]}>
+    <SafeAreaView
+      style={[s.safe, { backgroundColor: theme.bg }]}
+      edges={["top"]}
+    >
       <StatusBar
         barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={theme.bgDeep}
+        backgroundColor={theme.bg}
       />
-      <TopBar />
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <View
+        style={{
+          paddingTop: Platform.OS === "android" ? 2 : 0,
+        }}
+      >
+        <ProfileTopBar username={currentUser?.username} theme={theme} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{
+          paddingBottom: Math.max(insets.bottom + 30, 40),
+        }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={s.hero}>
           <View style={s.avatarWrap}>
             <View style={[s.avatar, { backgroundColor: avatarColor }]}>
-              <Text style={s.avatarText}>{initials}</Text>
+              <Text style={[s.avatarText, { color: theme.white }]}>
+                {initials}
+              </Text>
             </View>
+
             <TouchableOpacity
-              style={s.editBtn}
+              style={[
+                s.editBtn,
+                {
+                  backgroundColor: theme.purpleMid,
+                  borderColor: theme.bg,
+                },
+              ]}
               onPress={() => setEditModalVisible(true)}
             >
-              <IconEdit color={theme.white} />
+              <IconEdit color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
@@ -377,7 +568,13 @@ export default function Profile() {
           <Text style={[s.bio, { color: theme.whiteMuted }]}>{bioText}</Text>
 
           <TouchableOpacity
-            style={s.editProfileBtn}
+            style={[
+              s.editProfileBtn,
+              {
+                borderColor: theme.purpleMid,
+                backgroundColor: theme.purpleFaint,
+              },
+            ]}
             onPress={() => setEditModalVisible(true)}
           >
             <Text style={[s.editProfileText, { color: theme.purpleGlow }]}>
@@ -385,16 +582,15 @@ export default function Profile() {
             </Text>
           </TouchableOpacity>
 
-          {error && (
+          {error ? (
             <Text
               style={{ color: "#f87171", marginTop: 12, textAlign: "center" }}
             >
               {error}
             </Text>
-          )}
+          ) : null}
         </View>
 
-        {/* Theme Toggle Switch */}
         <View
           style={[
             s.toggleCard,
@@ -420,7 +616,6 @@ export default function Profile() {
           />
         </View>
 
-        {/* Stats */}
         <View
           style={[
             s.statsCard,
@@ -434,7 +629,6 @@ export default function Profile() {
           <StatBox value="142" label="CONTACTS" theme={theme} />
         </View>
 
-        {/* Notifications */}
         <View
           style={[
             s.toggleCard,
@@ -455,7 +649,6 @@ export default function Profile() {
           />
         </View>
 
-        {/* Menu Sections */}
         {MENU_SECTIONS.map((section, si) => (
           <View key={si} style={s.menuSection}>
             <Text style={[s.sectionLabel, { color: theme.faint }]}>
@@ -470,18 +663,17 @@ export default function Profile() {
               {section.items.map((item, ii) => (
                 <View key={ii}>
                   <MenuItem item={item} theme={theme} />
-                  {ii < section.items.length - 1 && (
+                  {ii < section.items.length - 1 ? (
                     <View
                       style={[s.itemDivider, { backgroundColor: theme.border }]}
                     />
-                  )}
+                  ) : null}
                 </View>
               ))}
             </View>
           </View>
         ))}
 
-        {/* Logout */}
         <TouchableOpacity
           style={[
             s.logoutBtn,
@@ -490,7 +682,7 @@ export default function Profile() {
           onPress={handleLogout}
         >
           <IconLogout color={theme.white} />
-          <Text style={s.logoutText}>Sign Out</Text>
+          <Text style={[s.logoutText, { color: theme.white }]}>Sign Out</Text>
         </TouchableOpacity>
 
         <Text style={[s.version, { color: theme.faint }]}>
@@ -498,10 +690,9 @@ export default function Profile() {
         </Text>
       </ScrollView>
 
-      {/* ── EDIT PROFILE MODAL ── */}
       <Modal
         animationType="fade"
-        transparent={true}
+        transparent
         visible={editModalVisible}
         onRequestClose={() => setEditModalVisible(false)}
       >
@@ -516,182 +707,205 @@ export default function Profile() {
               setEditModalVisible(false);
             }}
           >
-            <View
-              style={[s.modalOverlay, { backgroundColor: "rgba(0,0,0,0.88)" }]}
-            >
-              <View style={[s.modalContent, { backgroundColor: theme.card }]}>
-                <ScrollView
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                  contentContainerStyle={s.modalScrollContent}
+            <View style={s.modalOverlay}>
+              <TouchableWithoutFeedback onPress={() => {}}>
+                <View
+                  style={[
+                    s.modalContent,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                    },
+                  ]}
                 >
-                  <Text style={[s.modalTitle, { color: theme.white }]}>
-                    Edit Profile
-                  </Text>
+                  <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={s.modalScrollContent}
+                  >
+                    <Text style={[s.modalTitle, { color: theme.white }]}>
+                      Edit Profile
+                    </Text>
 
-                  <Text style={[s.modalLabel, { color: theme.white }]}>
-                    Full Name
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.modalInput,
-                      {
-                        backgroundColor: theme.inputBg,
-                        color: theme.white,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={editForm.full_name}
-                    onChangeText={(text) =>
-                      setEditForm({ ...editForm, full_name: text })
-                    }
-                    placeholder="Your full name"
-                    placeholderTextColor={theme.faint}
-                    autoCapitalize="words"
-                  />
+                    <Text style={[s.modalLabel, { color: theme.white }]}>
+                      Full Name
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.modalInput,
+                        {
+                          backgroundColor: theme.inputBg,
+                          color: theme.white,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      value={editForm.full_name}
+                      onChangeText={(text) =>
+                        setEditForm({ ...editForm, full_name: text })
+                      }
+                      placeholder="Your full name"
+                      placeholderTextColor={theme.faint}
+                      autoCapitalize="words"
+                    />
 
-                  <Text style={[s.modalLabel, { color: theme.white }]}>
-                    Bio
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.modalInput,
-                      {
-                        minHeight: 100,
-                        textAlignVertical: "top",
-                        backgroundColor: theme.inputBg,
-                        color: theme.white,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={editForm.bio}
-                    onChangeText={(text) =>
-                      setEditForm({ ...editForm, bio: text })
-                    }
-                    placeholder="Tell us about yourself..."
-                    placeholderTextColor={theme.faint}
-                    multiline
-                  />
+                    <Text style={[s.modalLabel, { color: theme.white }]}>
+                      Bio
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.modalInput,
+                        {
+                          minHeight: 100,
+                          textAlignVertical: "top",
+                          backgroundColor: theme.inputBg,
+                          color: theme.white,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      value={editForm.bio}
+                      onChangeText={(text) =>
+                        setEditForm({ ...editForm, bio: text })
+                      }
+                      placeholder="Tell us about yourself..."
+                      placeholderTextColor={theme.faint}
+                      multiline
+                    />
 
-                  <Text style={[s.modalLabel, { color: theme.white }]}>
-                    Department
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.modalInput,
-                      {
-                        backgroundColor: theme.inputBg,
-                        color: theme.white,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={editForm.department}
-                    onChangeText={(text) =>
-                      setEditForm({ ...editForm, department: text })
-                    }
-                    placeholder="e.g. Computer Science"
-                  />
+                    <Text style={[s.modalLabel, { color: theme.white }]}>
+                      Department
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.modalInput,
+                        {
+                          backgroundColor: theme.inputBg,
+                          color: theme.white,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      value={editForm.department}
+                      onChangeText={(text) =>
+                        setEditForm({ ...editForm, department: text })
+                      }
+                      placeholder="e.g. Computer Science"
+                      placeholderTextColor={theme.faint}
+                    />
 
-                  <Text style={[s.modalLabel, { color: theme.white }]}>
-                    Level
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.modalInput,
-                      {
-                        backgroundColor: theme.inputBg,
-                        color: theme.white,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={editForm.level}
-                    onChangeText={(text) =>
-                      setEditForm({ ...editForm, level: text })
-                    }
-                    placeholder="e.g. 300L"
-                  />
+                    <Text style={[s.modalLabel, { color: theme.white }]}>
+                      Level
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.modalInput,
+                        {
+                          backgroundColor: theme.inputBg,
+                          color: theme.white,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      value={editForm.level}
+                      onChangeText={(text) =>
+                        setEditForm({ ...editForm, level: text })
+                      }
+                      placeholder="e.g. 300L"
+                      placeholderTextColor={theme.faint}
+                    />
 
-                  <Text style={[s.modalLabel, { color: theme.white }]}>
-                    Initials (2 letters)
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.modalInput,
-                      {
-                        backgroundColor: theme.inputBg,
-                        color: theme.white,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={editForm.initials}
-                    onChangeText={(text) =>
-                      setEditForm({
-                        ...editForm,
-                        initials: text.toUpperCase().slice(0, 2),
-                      })
-                    }
-                    placeholder="e.g. AE"
-                    maxLength={2}
-                    autoCapitalize="characters"
-                  />
+                    <Text style={[s.modalLabel, { color: theme.white }]}>
+                      Initials (2 letters)
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.modalInput,
+                        {
+                          backgroundColor: theme.inputBg,
+                          color: theme.white,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      value={editForm.initials}
+                      onChangeText={(text) =>
+                        setEditForm({
+                          ...editForm,
+                          initials: text.toUpperCase().slice(0, 2),
+                        })
+                      }
+                      placeholder="e.g. AE"
+                      placeholderTextColor={theme.faint}
+                      maxLength={2}
+                      autoCapitalize="characters"
+                    />
 
-                  <Text style={[s.modalLabel, { color: theme.white }]}>
-                    Accent Color (#HEX)
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.modalInput,
-                      {
-                        backgroundColor: theme.inputBg,
-                        color: theme.white,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={editForm.color}
-                    onChangeText={(text) =>
-                      setEditForm({ ...editForm, color: text })
-                    }
-                    placeholder="#7C3AED"
-                  />
+                    <Text style={[s.modalLabel, { color: theme.white }]}>
+                      Accent Color (#HEX)
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.modalInput,
+                        {
+                          backgroundColor: theme.inputBg,
+                          color: theme.white,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      value={editForm.color}
+                      onChangeText={(text) =>
+                        setEditForm({ ...editForm, color: text })
+                      }
+                      placeholder="#7C3AED"
+                      placeholderTextColor={theme.faint}
+                    />
 
-                  <Text style={[s.modalLabel, { color: theme.white }]}>
-                    Avatar URL (optional)
-                  </Text>
-                  <TextInput
-                    style={[
-                      s.modalInput,
-                      {
-                        backgroundColor: theme.inputBg,
-                        color: theme.white,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                    value={editForm.avatar_url}
-                    onChangeText={(text) =>
-                      setEditForm({ ...editForm, avatar_url: text })
-                    }
-                    placeholder="https://example.com/avatar.jpg"
-                  />
+                    <Text style={[s.modalLabel, { color: theme.white }]}>
+                      Avatar URL (optional)
+                    </Text>
+                    <TextInput
+                      style={[
+                        s.modalInput,
+                        {
+                          backgroundColor: theme.inputBg,
+                          color: theme.white,
+                          borderColor: theme.border,
+                        },
+                      ]}
+                      value={editForm.avatar_url}
+                      onChangeText={(text) =>
+                        setEditForm({ ...editForm, avatar_url: text })
+                      }
+                      placeholder="https://example.com/avatar.jpg"
+                      placeholderTextColor={theme.faint}
+                    />
 
-                  <View style={s.modalButtons}>
-                    <TouchableOpacity
-                      style={[s.modalCancel, { backgroundColor: theme.border }]}
-                      onPress={() => setEditModalVisible(false)}
-                    >
-                      <Text style={[s.modalButtonText, { color: theme.white }]}>
-                        Cancel
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={s.modalButtons}>
+                      <TouchableOpacity
+                        style={[
+                          s.modalCancel,
+                          { backgroundColor: theme.border },
+                        ]}
+                        onPress={() => setEditModalVisible(false)}
+                      >
+                        <Text
+                          style={[s.modalButtonText, { color: theme.white }]}
+                        >
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={s.modalSave}
-                      onPress={handleSaveProfile}
-                    >
-                      <Text style={s.modalButtonText}>Save Changes</Text>
-                    </TouchableOpacity>
-                  </View>
-                </ScrollView>
-              </View>
+                      <TouchableOpacity
+                        style={[
+                          s.modalSave,
+                          { backgroundColor: theme.purpleMid },
+                        ]}
+                        onPress={handleSaveProfile}
+                      >
+                        <Text style={[s.modalButtonText, { color: "#FFFFFF" }]}>
+                          Save Changes
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
+                </View>
+              </TouchableWithoutFeedback>
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
@@ -705,6 +919,52 @@ export default function Profile() {
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
   safe: { flex: 1 },
+
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 2,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+  },
+
+  wordmark: {
+    fontSize: 21,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+
+  wordmarkAccent: {
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+
+  wordmarkSub: {
+    fontSize: 11,
+    marginTop: 2,
+    letterSpacing: 0.4,
+  },
+
+  usernameTag: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+
+  topActions: { flexDirection: "row", gap: 8 },
+
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
   hero: {
     alignItems: "center",
     paddingTop: 24,
@@ -712,7 +972,9 @@ const s = StyleSheet.create({
     paddingBottom: 20,
     gap: 6,
   },
+
   avatarWrap: { position: "relative", marginBottom: 4 },
+
   avatar: {
     width: 90,
     height: 90,
@@ -722,29 +984,44 @@ const s = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: "rgba(139,92,246,0.45)",
   },
+
   avatarText: { fontSize: 34, fontWeight: "900" },
+
   editBtn: {
     position: "absolute",
     bottom: -4,
     right: -4,
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    width: 30,
+    height: 30,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
   },
+
   name: { fontSize: 23, fontWeight: "900", marginTop: 4 },
-  handle: { fontSize: 13, fontStyle: "italic" },
-  bio: { fontSize: 13, textAlign: "center", lineHeight: 20, marginTop: 2 },
+
+  handle: {
+    fontSize: 13,
+    fontStyle: "italic",
+    textAlign: "center",
+  },
+
+  bio: {
+    fontSize: 13,
+    textAlign: "center",
+    lineHeight: 20,
+    marginTop: 2,
+  },
+
   editProfileBtn: {
     marginTop: 10,
     paddingHorizontal: 28,
     paddingVertical: 9,
     borderRadius: 20,
     borderWidth: 1.5,
-    backgroundColor: "rgba(109,40,217,0.12)",
   },
+
   editProfileText: { fontWeight: "700", fontSize: 14 },
 
   statsCard: {
@@ -755,9 +1032,13 @@ const s = StyleSheet.create({
     borderRadius: 18,
     overflow: "hidden",
   },
+
   statBox: { flex: 1, paddingVertical: 16, alignItems: "center" },
+
   statDivider: { width: 1, marginVertical: 12 },
+
   statNum: { fontSize: 22, fontWeight: "900" },
+
   statLabel: {
     fontSize: 10,
     fontWeight: "700",
@@ -784,13 +1065,16 @@ const s = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 6,
   },
+
   menuSection: { marginBottom: 4 },
+
   menuGroup: {
     marginHorizontal: 20,
     borderWidth: 1,
     borderRadius: 16,
     overflow: "hidden",
   },
+
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -798,7 +1082,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 13,
   },
+
   itemDivider: { height: 1, marginLeft: 64 },
+
   menuIconBox: {
     width: 36,
     height: 36,
@@ -806,7 +1092,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   menuEmoji: { fontSize: 16 },
+
   menuLabel: { flex: 1, fontSize: 14, fontWeight: "600" },
 
   logoutBtn: {
@@ -820,6 +1108,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
   },
+
   logoutText: { fontSize: 15, fontWeight: "700" },
 
   version: {
@@ -834,10 +1123,14 @@ const s = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.88)",
+    paddingHorizontal: 12,
   },
+
   modalContent: {
     borderRadius: 24,
-    width: "90%",
+    width: "100%",
+    maxWidth: 420,
     maxHeight: "82%",
     paddingHorizontal: 24,
     paddingTop: 32,
@@ -849,14 +1142,18 @@ const s = StyleSheet.create({
     shadowRadius: 20,
     elevation: 25,
   },
+
   modalScrollContent: { paddingBottom: 60 },
+
   modalTitle: {
     fontSize: 24,
     fontWeight: "bold",
     marginBottom: 24,
     textAlign: "center",
   },
+
   modalLabel: { fontSize: 14, marginBottom: 8, fontWeight: "600" },
+
   modalInput: {
     borderWidth: 1,
     borderRadius: 12,
@@ -864,23 +1161,27 @@ const s = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
   },
+
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 32,
     gap: 16,
   },
+
   modalCancel: {
     flex: 1,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",
   },
+
   modalSave: {
     flex: 1,
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: "center",
   },
+
   modalButtonText: { fontSize: 16, fontWeight: "700" },
 });

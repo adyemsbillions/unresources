@@ -231,7 +231,7 @@ function NavIcon({ id, color }: { id: string; color: string }) {
   return null;
 }
 
-function BottomNav({ active }: { active: string }) {
+export function BottomNav({ active }: { active: string }) {
   const router = useRouter();
 
   return (
@@ -258,7 +258,7 @@ function BottomNav({ active }: { active: string }) {
   );
 }
 
-function TopBar({ username }: { username?: string }) {
+export function TopBar({ username }: { username?: string }) {
   return (
     <View style={s.topBar}>
       <View style={{ flex: 1, paddingRight: 10 }}>
