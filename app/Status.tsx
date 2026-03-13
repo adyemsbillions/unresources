@@ -1,14 +1,16 @@
 /*
   File: app/Status.tsx
-  Purpose: WhatsApp-like Status Screen with add status + viewer + pause on hold
+  Purpose: WhatsApp-like Status Screen with text + photo status + caption + pause on hold
 */
 
+import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -201,6 +203,10 @@ export default function Status() {
 
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [statusText, setStatusText] = useState("");
+  const [selectedImageUri, setSelectedImageUri] = useState("");
+  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   const [viewerVisible, setViewerVisible] = useState(false);
   const [statusIndex, setStatusIndex] = useState(0);
   const [storyIndex, setStoryIndex] = useState(0);
@@ -257,13 +263,79 @@ export default function Status() {
     init();
   }, []);
 
+  const resetComposer = () => {
+    setStatusText("");
+    setSelectedImageUri("");
+    setUploadedImageUrl("");
+    setUploadingImage(false);
+  };
+
+  const pickImageStatus = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission required",
+        "Allow gallery access to pick a photo.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [9, 16],
+    });
+
+    if (result.canceled) return;
+
+    const image = result.assets[0];
+    setSelectedImageUri(image.uri);
+    await uploadImageStatus(image.uri);
+  };
+
+  const uploadImageStatus = async (uri: string) => {
+    try {
+      setUploadingImage(true);
+
+      const form = new FormData();
+      form.append("image", {
+        uri,
+        name: `status_${Date.now()}.jpg`,
+        type: "image/jpeg",
+      } as any);
+
+      const res = await fetch(`${API_BASE}/upload_status_image.php`, {
+        method: "POST",
+        body: form,
+      });
+
+      const text = await res.text();
+      const data = JSON.parse(text);
+
+      if (data.status === "success") {
+        setUploadedImageUrl(data.url);
+        setAddModalVisible(true);
+      } else {
+        Alert.alert("Upload failed", data.message || "Could not upload image");
+      }
+    } catch (err) {
+      Alert.alert("Upload failed", "Network error while uploading image");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const addStatus = async () => {
     if (!currentUser?.id) {
       Alert.alert("Error", "No logged-in user found");
       return;
     }
 
-    if (!statusText.trim()) {
+    const isImageStatus = !!uploadedImageUrl;
+
+    if (!isImageStatus && !statusText.trim()) {
       Alert.alert("Error", "Please type a status");
       return;
     }
@@ -274,8 +346,9 @@ export default function Status() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: currentUser.id,
-          type: "text",
+          type: isImageStatus ? "image" : "text",
           content: statusText.trim(),
+          media_url: uploadedImageUrl,
           background_color: T.purpleMid,
         }),
       });
@@ -284,7 +357,7 @@ export default function Status() {
       const data = JSON.parse(text);
 
       if (data.status === "success") {
-        setStatusText("");
+        resetComposer();
         setAddModalVisible(false);
         await loadStatuses(currentUser.id);
       } else {
@@ -471,6 +544,7 @@ export default function Status() {
               );
               if (myIndex >= 0) openViewer(myIndex);
             } else {
+              resetComposer();
               setAddModalVisible(true);
             }
           }}
@@ -486,7 +560,10 @@ export default function Status() {
             </View>
             <TouchableOpacity
               style={s.addBtn}
-              onPress={() => setAddModalVisible(true)}
+              onPress={() => {
+                resetComposer();
+                setAddModalVisible(true);
+              }}
             >
               <IconPlus />
             </TouchableOpacity>
@@ -497,7 +574,7 @@ export default function Status() {
             <Text style={s.mySub}>
               {myStatuses.length > 0
                 ? `Tap to view • ${myLatestTime}`
-                : "Tap + to add a text update"}
+                : "Tap + to add a text or photo update"}
             </Text>
           </View>
         </TouchableOpacity>
@@ -505,7 +582,10 @@ export default function Status() {
         <View style={s.actionRow}>
           <TouchableOpacity
             style={s.actionBtn}
-            onPress={() => setAddModalVisible(true)}
+            onPress={() => {
+              resetComposer();
+              setAddModalVisible(true);
+            }}
           >
             <View style={s.actionIcon}>
               <IconText />
@@ -515,12 +595,15 @@ export default function Status() {
 
           <TouchableOpacity
             style={s.actionBtn}
-            onPress={() => Alert.alert("Later", "Image status next step")}
+            onPress={pickImageStatus}
+            disabled={uploadingImage}
           >
             <View style={s.actionIcon}>
               <IconCamera />
             </View>
-            <Text style={s.actionLabel}>Photo</Text>
+            <Text style={s.actionLabel}>
+              {uploadingImage ? "Uploading..." : "Photo"}
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -572,17 +655,42 @@ export default function Status() {
         transparent
         visible={addModalVisible}
         animationType="fade"
-        onRequestClose={() => setAddModalVisible(false)}
+        onRequestClose={() => {
+          setAddModalVisible(false);
+          resetComposer();
+        }}
       >
-        <TouchableWithoutFeedback onPress={() => setAddModalVisible(false)}>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setAddModalVisible(false);
+            resetComposer();
+          }}
+        >
           <View style={s.modalOverlay}>
             <TouchableWithoutFeedback>
               <View style={s.modalCard}>
-                <Text style={s.modalTitle}>Add Status</Text>
+                <Text style={s.modalTitle}>
+                  {uploadedImageUrl ? "Add Photo Status" : "Add Status"}
+                </Text>
+
+                {selectedImageUri ? (
+                  <Image
+                    source={{ uri: selectedImageUri }}
+                    style={s.previewImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
 
                 <TextInput
-                  style={s.statusInput}
-                  placeholder="What's on your mind?"
+                  style={[
+                    s.statusInput,
+                    selectedImageUri ? s.statusInputSmall : null,
+                  ]}
+                  placeholder={
+                    selectedImageUri
+                      ? "Write a caption (optional)"
+                      : "What's on your mind?"
+                  }
                   placeholderTextColor={T.faint}
                   value={statusText}
                   onChangeText={setStatusText}
@@ -593,13 +701,18 @@ export default function Status() {
                 <View style={s.modalButtons}>
                   <TouchableOpacity
                     style={s.modalCancel}
-                    onPress={() => setAddModalVisible(false)}
+                    onPress={() => {
+                      setAddModalVisible(false);
+                      resetComposer();
+                    }}
                   >
                     <Text style={s.modalCancelText}>Cancel</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={s.modalPost} onPress={addStatus}>
-                    <Text style={s.modalPostText}>Post Status</Text>
+                    <Text style={s.modalPostText}>
+                      {uploadedImageUrl ? "Post Photo" : "Post Status"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -617,7 +730,10 @@ export default function Status() {
           style={[
             s.viewer,
             {
-              backgroundColor: currentStory?.background_color || T.bgDeep,
+              backgroundColor:
+                currentStory?.type === "image"
+                  ? "#000"
+                  : currentStory?.background_color || T.bgDeep,
             },
           ]}
         >
@@ -656,7 +772,22 @@ export default function Status() {
           </View>
 
           <View style={s.viewerCenter}>
-            <Text style={s.viewerText}>{currentStory?.content || ""}</Text>
+            {currentStory?.type === "image" && currentStory?.media_url ? (
+              <>
+                <Image
+                  source={{ uri: currentStory.media_url }}
+                  style={s.viewerImage}
+                  resizeMode="contain"
+                />
+                {currentStory?.content ? (
+                  <View style={s.captionWrap}>
+                    <Text style={s.viewerCaption}>{currentStory.content}</Text>
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <Text style={s.viewerText}>{currentStory?.content || ""}</Text>
+            )}
           </View>
 
           <View style={s.touchAreas}>
@@ -891,6 +1022,14 @@ const s = StyleSheet.create({
     marginBottom: 14,
   },
 
+  previewImage: {
+    width: "100%",
+    height: 260,
+    borderRadius: 16,
+    marginBottom: 12,
+    backgroundColor: T.bgDeep,
+  },
+
   statusInput: {
     minHeight: 120,
     backgroundColor: T.bg,
@@ -901,6 +1040,10 @@ const s = StyleSheet.create({
     color: T.white,
     textAlignVertical: "top",
     fontSize: 15,
+  },
+
+  statusInputSmall: {
+    minHeight: 90,
   },
 
   modalButtons: {
@@ -992,7 +1135,7 @@ const s = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
   },
 
   viewerText: {
@@ -1001,6 +1144,30 @@ const s = StyleSheet.create({
     lineHeight: 38,
     textAlign: "center",
     fontWeight: "700",
+  },
+
+  viewerImage: {
+    width: "100%",
+    height: "78%",
+  },
+
+  captionWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 34,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+  },
+
+  viewerCaption: {
+    color: "#fff",
+    fontSize: 15,
+    textAlign: "center",
+    fontWeight: "600",
+    lineHeight: 22,
   },
 
   touchAreas: {
