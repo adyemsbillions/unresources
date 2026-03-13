@@ -1,15 +1,17 @@
 /*
   File: app/Profile.tsx
-  Purpose: Unimaid Resources — Profile Screen with Light/Dark Mode Toggle & Edit Modal
+  Purpose: Unimaid Resources — Profile Screen (Enhanced)
+  - Unified theme system (4 themes, synced with Home & ChatRoom)
+  - Better avatar hero, stats, menu, and edit modal
 */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Keyboard,
+  Animated,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,52 +22,149 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+  View
 } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path } from "react-native-svg";
-import { BottomNav } from "./Home";
 
 const API_BASE = "https://unresources.cravii.ng/api";
 
-// ─── THEME DEFINITIONS ──────────────────────────────────────────────────────
-const lightTheme = {
-  bg: "#FFFFFF",
-  bgDeep: "#F8F9FA",
-  card: "#F0F2F5",
-  border: "#E0E0E0",
-  inputBg: "#F8F9FA",
-  white: "#000000",
-  whiteMuted: "#333333",
-  faint: "#666666",
-  purpleGlow: "#7C3AED",
-  purpleMid: "#6B2ED9",
-  purpleLight: "#A78BFA",
-  purpleFaint: "#F3E8FF",
-  online: "#00C853",
+// ─── THEME SYSTEM ────────────────────────────────────────────────────────────
+
+type ThemeMode = "dark" | "light" | "midnight" | "forest";
+
+function buildTheme(t: {
+  bg: string;
+  bgDeep: string;
+  card: string;
+  cardHover: string;
+  border: string;
+  borderStrong: string;
+  text: string;
+  textSoft: string;
+  textMuted: string;
+  textFaint: string;
+  accent: string;
+  accentGlow: string;
+  accentFaint: string;
+  accentMid: string;
+  online: string;
+  navBg: string;
+  badge: string;
+  badgeText: string;
+  unreadDot: string;
+  statusBar: "light-content" | "dark-content";
+  shadow: string;
+}) {
+  return t;
+}
+
+const THEMES: Record<ThemeMode, ReturnType<typeof buildTheme>> = {
+  dark: buildTheme({
+    bg: "#0D0E14",
+    bgDeep: "#08090E",
+    card: "#141520",
+    cardHover: "#1A1B2A",
+    border: "#1E2035",
+    borderStrong: "#2A2C48",
+    text: "#F0F0FF",
+    textSoft: "#C5C7E8",
+    textMuted: "#6B6E94",
+    textFaint: "#3E4168",
+    accent: "#7C5CFC",
+    accentGlow: "#9B7EFF",
+    accentFaint: "rgba(124,92,252,0.12)",
+    accentMid: "#6244E5",
+    online: "#22D3A0",
+    navBg: "#0F1018",
+    badge: "#7C5CFC",
+    badgeText: "#FFFFFF",
+    unreadDot: "#22D3A0",
+    statusBar: "light-content",
+    shadow: "rgba(0,0,0,0.6)",
+  }),
+  light: buildTheme({
+    bg: "#F4F5FB",
+    bgDeep: "#ECEDF7",
+    card: "#FFFFFF",
+    cardHover: "#F0F0FF",
+    border: "#E2E3F0",
+    borderStrong: "#C8CAE8",
+    text: "#1A1B2E",
+    textSoft: "#2D2F52",
+    textMuted: "#6B6E94",
+    textFaint: "#9B9EC0",
+    accent: "#6244E5",
+    accentGlow: "#7C5CFC",
+    accentFaint: "rgba(98,68,229,0.08)",
+    accentMid: "#5234C8",
+    online: "#16B98C",
+    navBg: "#FFFFFF",
+    badge: "#6244E5",
+    badgeText: "#FFFFFF",
+    unreadDot: "#16B98C",
+    statusBar: "dark-content",
+    shadow: "rgba(50,50,100,0.15)",
+  }),
+  midnight: buildTheme({
+    bg: "#060810",
+    bgDeep: "#030408",
+    card: "#0C0E1A",
+    cardHover: "#111428",
+    border: "#141830",
+    borderStrong: "#1E2244",
+    text: "#E8EAFF",
+    textSoft: "#B0B4E0",
+    textMuted: "#5B5F88",
+    textFaint: "#303460",
+    accent: "#4F8EFF",
+    accentGlow: "#7AAEFF",
+    accentFaint: "rgba(79,142,255,0.12)",
+    accentMid: "#3B78F0",
+    online: "#00E5B0",
+    navBg: "#070912",
+    badge: "#4F8EFF",
+    badgeText: "#FFFFFF",
+    unreadDot: "#00E5B0",
+    statusBar: "light-content",
+    shadow: "rgba(0,0,0,0.8)",
+  }),
+  forest: buildTheme({
+    bg: "#0A120E",
+    bgDeep: "#060D09",
+    card: "#0F1A12",
+    cardHover: "#142018",
+    border: "#182A1E",
+    borderStrong: "#213D29",
+    text: "#E6F0E8",
+    textSoft: "#B8CEBE",
+    textMuted: "#5C7A64",
+    textFaint: "#304038",
+    accent: "#2DD882",
+    accentGlow: "#4EEEA0",
+    accentFaint: "rgba(45,216,130,0.12)",
+    accentMid: "#22B86A",
+    online: "#FFE066",
+    navBg: "#0B140F",
+    badge: "#2DD882",
+    badgeText: "#050D07",
+    unreadDot: "#FFE066",
+    statusBar: "light-content",
+    shadow: "rgba(0,0,0,0.6)",
+  }),
 };
 
-const darkTheme = {
-  bg: "#08080F",
-  bgDeep: "#000000",
-  card: "#0F0F1C",
-  border: "#1C1C30",
-  inputBg: "#070710",
-  white: "#FFFFFF",
-  whiteMuted: "#E5E5F0",
-  faint: "#4B4B6B",
-  purpleGlow: "#7C3AED",
-  purpleMid: "#6B2ED9",
-  purpleLight: "#A78BFA",
-  purpleFaint: "#2A1A4D",
-  online: "#00C853",
+const THEME_LABELS: Record<ThemeMode, { icon: string; label: string }> = {
+  dark: { icon: "◐", label: "Dark" },
+  light: { icon: "○", label: "Light" },
+  midnight: { icon: "●", label: "Night" },
+  forest: { icon: "◈", label: "Forest" },
 };
 
-type ThemeType = typeof darkTheme;
+// ─── TYPES ───────────────────────────────────────────────────────────────────
 
 type UserType = {
   id?: number | string;
@@ -80,253 +179,459 @@ type UserType = {
   email?: string;
 };
 
-// ─── ICONS ──────────────────────────────────────────────────────────────────
-const IconEdit = ({ color, size = 14 }: { color: string; size?: number }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
+// ─── ICONS ───────────────────────────────────────────────────────────────────
 
-const IconChevron = ({
-  color,
-  size = 18,
+function IconEdit({ color = "#fff", size = 16 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+function IconChevron({ color = "#888", size = 17 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9 18l6-6-6-6"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+function IconLogout({ color = "#F87171", size = 18 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M16 17l5-5-5-5"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M21 12H9"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+function IconBell({ color = "#888", size = 20 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M13.73 21a2 2 0 0 1-3.46 0"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+function IconPalette({ color = "#888", size = 20 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2v-.5c0-.55-.22-1.05-.59-1.41-.36-.36-.59-.86-.59-1.41 0-1.1.9-2 2-2h2c3.31 0 6-2.69 6-6 0-4.96-4.48-9-10-9z"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+      />
+      <Circle cx="8.5" cy="10.5" r="1" fill={color} />
+      <Circle cx="12" cy="7.5" r="1" fill={color} />
+      <Circle cx="15.5" cy="10.5" r="1" fill={color} />
+    </Svg>
+  );
+}
+function IconX({ color = "#888", size = 16 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line
+        x1="18"
+        y1="6"
+        x2="6"
+        y2="18"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+      <Line
+        x1="6"
+        y1="6"
+        x2="18"
+        y2="18"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+function IconCheck({ color = "#fff", size = 18 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M20 6L9 17l-5-5"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+function IconChat({ color = "#fff", size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 0 2 2z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+function IconStatus({ color = "#fff", size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth={1.8} />
+      <Path
+        d="M4 20c0-4 3.6-7 8-7s8 3 8 7"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+function IconMarket({ color = "#fff", size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4H6z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line
+        x1="3"
+        y1="6"
+        x2="21"
+        y2="6"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M16 10a4 4 0 0 1-8 0"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+function IconProfile({ color = "#fff", size = 22 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="8" r="3.5" stroke={color} strokeWidth={1.8} />
+      <Path
+        d="M5 20a7 7 0 0 1 14 0"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+// ─── NAV ─────────────────────────────────────────────────────────────────────
+
+const NAV_ITEMS = [
+  { id: "chats", label: "Chats", route: "/Home" },
+  { id: "status", label: "Status", route: "/Status" },
+  { id: "marketplace", label: "Market", route: "/Marketplace" },
+  { id: "profile", label: "Profile", route: "/Profile" },
+];
+
+function NavIcon({ id, color }: { id: string; color: string }) {
+  if (id === "chats") return <IconChat color={color} />;
+  if (id === "status") return <IconStatus color={color} />;
+  if (id === "marketplace") return <IconMarket color={color} />;
+  if (id === "profile") return <IconProfile color={color} />;
+  return null;
+}
+
+function BottomNav({
+  active,
+  C,
 }: {
-  color: string;
-  size?: number;
-}) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M9 18l6-6-6-6"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-const IconLogout = ({
-  color = "#f87171",
-  size = 17,
-}: {
-  color?: string;
-  size?: number;
-}) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M16 17l5-5-5-5"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M21 12H9"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </Svg>
-);
-
-const IconSearch = ({ color, size = 17 }: { color: string; size?: number }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={1.9} />
-    <Line
-      x1="16.5"
-      y1="16.5"
-      x2="22"
-      y2="22"
-      stroke={color}
-      strokeWidth={1.9}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
-
-const IconBell = ({ color, size = 19 }: { color: string; size?: number }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path
-      d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <Path
-      d="M13.73 21a2 2 0 0 1-3.46 0"
-      stroke={color}
-      strokeWidth={1.8}
-      strokeLinecap="round"
-    />
-  </Svg>
-);
-
-// ─── TOP BAR ────────────────────────────────────────────────────────────────
-function ProfileTopBar({
-  username,
-  theme,
-}: {
-  username?: string;
-  theme: ThemeType;
+  active: string;
+  C: ReturnType<typeof buildTheme>;
 }) {
+  const router = useRouter();
   return (
     <View
       style={[
-        s.topBar,
-        {
-          backgroundColor: theme.bg,
-          borderBottomColor: theme.border,
-        },
+        s.bottomNav,
+        { backgroundColor: C.navBg, borderTopColor: C.border },
       ]}
     >
-      <View style={{ flex: 1, paddingRight: 10 }}>
-        <Text style={[s.wordmark, { color: theme.white }]}>
-          PROFILE{" "}
-          <Text style={[s.wordmarkAccent, { color: theme.purpleGlow }]}>
-            SETTINGS
-          </Text>
-        </Text>
-
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text style={[s.wordmarkSub, { color: theme.faint }]}>
-            University of Maiduguri
-          </Text>
-          {username ? (
-            <>
-              <Text style={[s.wordmarkSub, { color: theme.faint }]}>·</Text>
-              <Text
-                style={[s.usernameTag, { color: theme.white }]}
-                numberOfLines={1}
-              >
-                @{username}
-              </Text>
-            </>
-          ) : null}
-        </View>
-      </View>
-
-      <View style={s.topActions}>
-        <TouchableOpacity
-          style={[
-            s.iconBtn,
-            { backgroundColor: theme.card, borderColor: theme.border },
-          ]}
-        >
-          <IconSearch color={theme.whiteMuted} size={17} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            s.iconBtn,
-            { backgroundColor: theme.card, borderColor: theme.border },
-          ]}
-        >
-          <IconBell color={theme.whiteMuted} size={19} />
-        </TouchableOpacity>
-      </View>
+      {NAV_ITEMS.map((tab) => {
+        const isActive = active === tab.id;
+        return (
+          <TouchableOpacity
+            key={tab.id}
+            style={s.navItem}
+            onPress={() => router.replace(tab.route as any)}
+            activeOpacity={0.7}
+          >
+            <View
+              style={[
+                s.navIconWrap,
+                isActive && { backgroundColor: C.accentFaint },
+              ]}
+            >
+              <NavIcon
+                id={tab.id}
+                color={isActive ? C.accentGlow : C.textFaint}
+              />
+            </View>
+            <Text
+              style={[
+                s.navLabel,
+                { color: isActive ? C.accentGlow : C.textFaint },
+                isActive && { fontWeight: "700" },
+              ]}
+            >
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
-// ─── MENU & STAT ────────────────────────────────────────────────────────────
+// ─── THEME SWITCHER ──────────────────────────────────────────────────────────
+
+function ThemeSwitcher({
+  current,
+  onChange,
+  C,
+}: {
+  current: ThemeMode;
+  onChange: (t: ThemeMode) => void;
+  C: ReturnType<typeof buildTheme>;
+}) {
+  const [open, setOpen] = useState(false);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  const toggle = () => {
+    const toValue = open ? 0 : 1;
+    setOpen(!open);
+    Animated.spring(anim, {
+      toValue,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 10,
+    }).start();
+  };
+
+  return (
+    <View style={{ position: "relative" }}>
+      <TouchableOpacity
+        style={[s.iconBtn, { backgroundColor: C.card, borderColor: C.border }]}
+        onPress={toggle}
+        activeOpacity={0.75}
+      >
+        <IconPalette color={open ? C.accentGlow : C.textMuted} />
+      </TouchableOpacity>
+
+      {open && (
+        <Animated.View
+          style={[
+            s.themeDropdown,
+            {
+              backgroundColor: C.card,
+              borderColor: C.borderStrong,
+              opacity: anim,
+              transform: [
+                {
+                  scale: anim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.85, 1],
+                  }),
+                },
+              ],
+              shadowColor: C.shadow,
+            },
+          ]}
+        >
+          {(Object.keys(THEMES) as ThemeMode[]).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[
+                s.themeOption,
+                current === t && { backgroundColor: C.accentFaint },
+              ]}
+              onPress={() => {
+                onChange(t);
+                setOpen(false);
+              }}
+            >
+              <Text style={{ fontSize: 16, marginRight: 8 }}>
+                {THEME_LABELS[t].icon}
+              </Text>
+              <Text
+                style={[
+                  s.themeLabel,
+                  {
+                    color: current === t ? C.accentGlow : C.textSoft,
+                    fontWeight: current === t ? "700" : "500",
+                  },
+                ]}
+              >
+                {THEME_LABELS[t].label}
+              </Text>
+              {current === t && (
+                <View style={[s.themeDot, { backgroundColor: C.accentGlow }]} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
+// ─── MENU DATA ───────────────────────────────────────────────────────────────
+
 const MENU_SECTIONS = [
   {
     title: "ACCOUNT",
     items: [
-      { icon: "📢", label: "Announcements", bg: "#5b21b6", arrow: true },
-      { icon: "🛍️", label: "My Listings", bg: "#0e7490", arrow: true },
-      { icon: "🔔", label: "Notifications", bg: "#b45309", arrow: true },
+      { icon: "📢", label: "Announcements", bg: "#5b21b6" },
+      { icon: "🛍️", label: "My Listings", bg: "#0e7490" },
+      { icon: "🔔", label: "Notifications", bg: "#b45309" },
     ],
   },
   {
     title: "PREFERENCES",
     items: [
-      { icon: "🔒", label: "Privacy & Security", bg: "#065f46", arrow: true },
-      { icon: "🎨", label: "Appearance", bg: "#9d174d", arrow: true },
-      { icon: "🌐", label: "Language", bg: "#1e3a5f", arrow: true },
+      { icon: "🔒", label: "Privacy & Security", bg: "#065f46" },
+      { icon: "🎨", label: "Appearance", bg: "#9d174d" },
+      { icon: "🌐", label: "Language", bg: "#1e3a5f" },
     ],
   },
   {
     title: "SUPPORT",
     items: [
-      { icon: "❓", label: "Help & Support", bg: "#4c1d95", arrow: true },
-      { icon: "⭐", label: "Rate the App", bg: "#78350f", arrow: true },
+      { icon: "❓", label: "Help & Support", bg: "#4c1d95" },
+      { icon: "⭐", label: "Rate the App", bg: "#78350f" },
     ],
   },
 ];
 
-function StatBox({
-  value,
+// ─── FIELD INPUT (for modal) ──────────────────────────────────────────────────
+
+function FieldInput({
   label,
-  theme,
+  value,
+  onChange,
+  placeholder,
+  multiline = false,
+  maxLength,
+  autoCapitalize,
+  C: TC,
 }: {
-  value: string;
   label: string;
-  theme: ThemeType;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  multiline?: boolean;
+  maxLength?: number;
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  C: ReturnType<typeof buildTheme>;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
-    <View style={[s.statBox, { backgroundColor: theme.card }]}>
-      <Text style={[s.statNum, { color: theme.white }]}>{value}</Text>
-      <Text style={[s.statLabel, { color: theme.faint }]}>{label}</Text>
+    <View style={{ marginBottom: 18 }}>
+      <Text style={[s.modalLabel, { color: TC.textMuted }]}>{label}</Text>
+      <TextInput
+        style={[
+          s.modalInput,
+          {
+            backgroundColor: TC.bgDeep,
+            color: TC.text,
+            borderColor: focused ? TC.accentMid : TC.border,
+            minHeight: multiline ? 90 : 48,
+            textAlignVertical: multiline ? "top" : "center",
+          },
+        ]}
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={TC.textFaint}
+        multiline={multiline}
+        maxLength={maxLength}
+        autoCapitalize={autoCapitalize}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
     </View>
   );
 }
 
-function MenuItem({
-  item,
-  theme,
-}: {
-  item: { icon: string; label: string; bg: string; arrow?: boolean };
-  theme: ThemeType;
-}) {
-  return (
-    <TouchableOpacity style={s.menuItem} activeOpacity={0.72}>
-      <View style={[s.menuIconBox, { backgroundColor: item.bg }]}>
-        <Text style={s.menuEmoji}>{item.icon}</Text>
-      </View>
-      <Text style={[s.menuLabel, { color: theme.whiteMuted }]}>
-        {item.label}
-      </Text>
-      {item.arrow ? <IconChevron color={theme.faint} /> : null}
-    </TouchableOpacity>
-  );
-}
+// ─── MAIN ────────────────────────────────────────────────────────────────────
 
 export default function Profile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user: passedUser } = useLocalSearchParams();
 
-  const [isDark, setIsDark] = useState(true);
-  const theme = isDark ? darkTheme : lightTheme;
+  const [theme, setTheme] = useState<ThemeMode>("dark");
+  const C = THEMES[theme];
 
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: "",
@@ -338,50 +643,33 @@ export default function Profile() {
     avatar_url: "",
   });
 
-  useEffect(() => {
-    const loadTheme = async () => {
-      try {
-        const saved = await SecureStore.getItemAsync("theme_preference");
-        if (saved !== null) {
-          setIsDark(saved === "dark");
-        }
-      } catch (err) {
-        console.log("Theme load error:", err);
-      }
-    };
-    loadTheme();
-  }, []);
-
-  const toggleTheme = async () => {
+  // Persist theme
+  const handleThemeChange = async (t: ThemeMode) => {
+    setTheme(t);
     try {
-      const newDark = !isDark;
-      setIsDark(newDark);
-      await SecureStore.setItemAsync(
-        "theme_preference",
-        newDark ? "dark" : "light",
-      );
-    } catch (err) {
-      console.log("Theme save error:", err);
-    }
+      await SecureStore.setItemAsync("theme", t);
+    } catch {}
   };
+
+  useEffect(() => {
+    SecureStore.getItemAsync("theme")
+      .then((t) => {
+        if (t && THEMES[t as ThemeMode]) setTheme(t as ThemeMode);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const loadProfile = async () => {
       setLoading(true);
-      setError(null);
-
       try {
         let userData: UserType | null = null;
-
-        if (passedUser && typeof passedUser === "string") {
+        if (passedUser && typeof passedUser === "string")
           userData = JSON.parse(passedUser);
-        }
-
         if (!userData) {
-          const stored = await SecureStore.getItemAsync("user");
-          if (stored) userData = JSON.parse(stored);
+          const s = await SecureStore.getItemAsync("user");
+          if (s) userData = JSON.parse(s);
         }
-
         if (userData) {
           setCurrentUser(userData);
           setEditForm({
@@ -390,20 +678,15 @@ export default function Profile() {
             department: userData.department || "",
             level: userData.level || "",
             initials: userData.initials || "",
-            color: userData.color || "#7C3AED",
+            color: userData.color || "#7C5CFC",
             avatar_url: userData.avatar_url || "",
           });
-        } else {
-          setError("No user data found. Please log in again.");
         }
-      } catch (err) {
-        setError("Failed to load profile.");
-        console.error(err);
+      } catch {
       } finally {
         setLoading(false);
       }
     };
-
     loadProfile();
   }, [passedUser]);
 
@@ -412,7 +695,7 @@ export default function Profile() {
       Alert.alert("Error", "No user ID found.");
       return;
     }
-
+    setSaving(true);
     try {
       const body = {
         user_id: currentUser.id,
@@ -424,24 +707,14 @@ export default function Profile() {
         accent_color: editForm.color,
         profile_picture: editForm.avatar_url,
       };
-
       const res = await fetch(`${API_BASE}/update_profile.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        Alert.alert("Error", "Invalid server response.");
-        return;
-      }
-
+      const data = await res.json();
       if (data.status === "success") {
-        const updatedUser: UserType = {
+        const updated = {
           ...currentUser,
           full_name: body.name,
           bio: body.bio,
@@ -451,22 +724,19 @@ export default function Profile() {
           color: body.accent_color,
           avatar_url: body.profile_picture,
         };
-
-        setCurrentUser(updatedUser);
-        await SecureStore.setItemAsync("user", JSON.stringify(updatedUser));
+        setCurrentUser(updated);
+        await SecureStore.setItemAsync("user", JSON.stringify(updated));
         setEditModalVisible(false);
-        Alert.alert("Success", "Profile updated!");
-      } else {
-        Alert.alert("Error", data.message || "Failed to update.");
-      }
-    } catch (err) {
+      } else Alert.alert("Error", data.message || "Failed to update.");
+    } catch {
       Alert.alert("Error", "Network error.");
-      console.error(err);
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleLogout = () => {
-    Alert.alert("Sign Out", "Are you sure?", [
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Sign Out",
@@ -485,213 +755,263 @@ export default function Profile() {
   const handleText = currentUser?.username
     ? `@${currentUser.username}`
     : "@unknown";
-
   const bioText = currentUser?.bio || "No bio set yet.";
   const deptLevel =
     currentUser?.department && currentUser?.level
-      ? `${currentUser.department} ${currentUser.level}`
-      : "Unknown";
+      ? `${currentUser.department} · ${currentUser.level}`
+      : "University of Maiduguri";
+  const initials =
+    currentUser?.initials || name.slice(0, 2).toUpperCase() || "??";
+  const avatarColor = currentUser?.color || C.accentMid;
 
-  const initials = currentUser?.initials || name.charAt(0).toUpperCase() || "?";
-  const avatarColor = currentUser?.color || theme.purpleMid;
+  // ─── LOADING ─────────────────────────────────────────────────────────────
 
-  if (loading) {
+  if (loading)
     return (
-      <SafeAreaView
-        style={[s.safe, { backgroundColor: theme.bg }]}
-        edges={["top"]}
-      >
-        <StatusBar
-          barStyle={isDark ? "light-content" : "dark-content"}
-          backgroundColor={theme.bg}
-        />
-        <ActivityIndicator
-          size="large"
-          color={theme.purpleGlow}
-          style={{ flex: 1, justifyContent: "center" }}
-        />
+      <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
+        <StatusBar barStyle={C.statusBar} backgroundColor={C.bg} />
+        <View style={s.centerWrap}>
+          <ActivityIndicator size="large" color={C.accentGlow} />
+        </View>
       </SafeAreaView>
     );
-  }
+
+  // ─── RENDER ──────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView
-      style={[s.safe, { backgroundColor: theme.bg }]}
-      edges={["top"]}
-    >
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={theme.bg}
-      />
+    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
+      <StatusBar barStyle={C.statusBar} backgroundColor={C.bg} />
 
-      <View
-        style={{
-          paddingTop: Platform.OS === "android" ? 2 : 0,
-        }}
-      >
-        <ProfileTopBar username={currentUser?.username} theme={theme} />
+      {/* Accent top line */}
+      <View style={[s.accentLine, { backgroundColor: C.accent }]} />
+
+      {/* Top bar */}
+      <View style={[s.topBar, { borderBottomColor: C.border }]}>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <View
+              style={[
+                s.logoMark,
+                { backgroundColor: C.accentFaint, borderColor: C.accentMid },
+              ]}
+            >
+              <Text style={[s.logoMarkText, { color: C.accentGlow }]}>U</Text>
+            </View>
+            <View>
+              <Text style={[s.wordmark, { color: C.text }]}>
+                UNIMAID <Text style={{ color: C.accentGlow }}>RESOURCES</Text>
+              </Text>
+              <Text style={[s.wordmarkSub, { color: C.textMuted }]}>
+                Profile Settings
+              </Text>
+            </View>
+          </View>
+        </View>
+        <View style={s.topActions}>
+          <ThemeSwitcher current={theme} onChange={handleThemeChange} C={C} />
+          <TouchableOpacity
+            style={[
+              s.iconBtn,
+              { backgroundColor: C.card, borderColor: C.border },
+            ]}
+          >
+            <IconBell color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
         contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom + 30, 40),
+          paddingBottom: Math.max(insets.bottom + 90, 100),
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={s.hero}>
-          <View style={s.avatarWrap}>
-            <View style={[s.avatar, { backgroundColor: avatarColor }]}>
-              <Text style={[s.avatarText, { color: theme.white }]}>
-                {initials}
+        {/* ── HERO ─────────────────────────────────────────────────────────── */}
+        <View
+          style={[
+            s.heroCard,
+            { backgroundColor: C.card, borderColor: C.border },
+          ]}
+        >
+          {/* Decorative banner */}
+          <View style={[s.heroBanner, { backgroundColor: avatarColor + "18" }]}>
+            <View
+              style={[
+                s.heroBannerStripe,
+                { backgroundColor: avatarColor + "30" },
+              ]}
+            />
+          </View>
+
+          {/* Avatar */}
+          <View style={s.heroBody}>
+            <View style={s.avatarWrap}>
+              <View
+                style={[
+                  s.avatar,
+                  {
+                    backgroundColor: avatarColor + "22",
+                    borderColor: avatarColor + "66",
+                  },
+                ]}
+              >
+                <Text style={[s.avatarText, { color: avatarColor }]}>
+                  {initials}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  s.editAvatarBtn,
+                  { backgroundColor: C.accentMid, borderColor: C.bg },
+                ]}
+                onPress={() => setEditModalVisible(true)}
+              >
+                <IconEdit color="#fff" size={13} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.heroInfo}>
+              <Text style={[s.heroName, { color: C.text }]}>{name}</Text>
+              <Text style={[s.heroHandle, { color: C.accentGlow }]}>
+                {handleText}
               </Text>
+              <Text style={[s.heroDept, { color: C.textMuted }]}>
+                {deptLevel}
+              </Text>
+              {bioText !== "No bio set yet." && (
+                <Text style={[s.heroBio, { color: C.textSoft }]}>
+                  {bioText}
+                </Text>
+              )}
             </View>
 
             <TouchableOpacity
               style={[
-                s.editBtn,
-                {
-                  backgroundColor: theme.purpleMid,
-                  borderColor: theme.bg,
-                },
+                s.editProfileBtn,
+                { backgroundColor: C.accentFaint, borderColor: C.accentMid },
               ]}
               onPress={() => setEditModalVisible(true)}
+              activeOpacity={0.8}
             >
-              <IconEdit color="#FFFFFF" />
+              <IconEdit color={C.accentGlow} size={15} />
+              <Text style={[s.editProfileText, { color: C.accentGlow }]}>
+                Edit Profile
+              </Text>
             </TouchableOpacity>
           </View>
-
-          <Text style={[s.name, { color: theme.white }]}>{name}</Text>
-          <Text style={[s.handle, { color: theme.purpleGlow }]}>
-            {handleText} · {deptLevel}
-          </Text>
-          <Text style={[s.bio, { color: theme.whiteMuted }]}>{bioText}</Text>
-
-          <TouchableOpacity
-            style={[
-              s.editProfileBtn,
-              {
-                borderColor: theme.purpleMid,
-                backgroundColor: theme.purpleFaint,
-              },
-            ]}
-            onPress={() => setEditModalVisible(true)}
-          >
-            <Text style={[s.editProfileText, { color: theme.purpleGlow }]}>
-              Edit Profile
-            </Text>
-          </TouchableOpacity>
-
-          {error ? (
-            <Text
-              style={{ color: "#f87171", marginTop: 12, textAlign: "center" }}
-            >
-              {error}
-            </Text>
-          ) : null}
         </View>
 
-        <View
-          style={[
-            s.toggleCard,
-            { backgroundColor: theme.card, borderColor: theme.border },
-          ]}
-        >
-          <View
-            style={[
-              s.menuIconBox,
-              { backgroundColor: isDark ? "#FFD700" : "#4A90E2" },
-            ]}
-          >
-            <Text style={s.menuEmoji}>{isDark ? "☀️" : "🌙"}</Text>
-          </View>
-          <Text style={[s.menuLabel, { color: theme.whiteMuted }]}>
-            {isDark ? "Light Mode" : "Dark Mode"}
-          </Text>
-          <Switch
-            value={isDark}
-            onValueChange={toggleTheme}
-            trackColor={{ false: theme.border, true: theme.purpleMid }}
-            thumbColor={isDark ? theme.purpleGlow : theme.faint}
-          />
-        </View>
-
+        {/* ── STATS ────────────────────────────────────────────────────────── */}
         <View
           style={[
             s.statsCard,
-            { backgroundColor: theme.card, borderColor: theme.border },
+            { backgroundColor: C.card, borderColor: C.border },
           ]}
         >
-          <StatBox value="24" label="CHATS" theme={theme} />
-          <View style={[s.statDivider, { backgroundColor: theme.border }]} />
-          <StatBox value="7" label="LISTINGS" theme={theme} />
-          <View style={[s.statDivider, { backgroundColor: theme.border }]} />
-          <StatBox value="142" label="CONTACTS" theme={theme} />
+          {[
+            { val: "24", lbl: "Chats" },
+            { val: "7", lbl: "Listings" },
+            { val: "142", lbl: "Contacts" },
+          ].map((st, i, arr) => (
+            <React.Fragment key={st.lbl}>
+              <View style={s.statBox}>
+                <Text style={[s.statNum, { color: C.text }]}>{st.val}</Text>
+                <Text style={[s.statLabel, { color: C.textMuted }]}>
+                  {st.lbl}
+                </Text>
+              </View>
+              {i < arr.length - 1 && (
+                <View style={[s.statDivider, { backgroundColor: C.border }]} />
+              )}
+            </React.Fragment>
+          ))}
         </View>
 
+        {/* ── TOGGLES ───────────────────────────────────────────────────────── */}
         <View
           style={[
-            s.toggleCard,
-            { backgroundColor: theme.card, borderColor: theme.border },
+            s.togglesCard,
+            { backgroundColor: C.card, borderColor: C.border },
           ]}
         >
-          <View style={[s.menuIconBox, { backgroundColor: "#b45309" }]}>
-            <Text style={s.menuEmoji}>🔔</Text>
+          <View style={[s.toggleRow, { borderBottomColor: C.border }]}>
+            <View style={[s.menuIconBox, { backgroundColor: "#b45309" }]}>
+              <Text style={s.menuEmoji}>🔔</Text>
+            </View>
+            <Text style={[s.menuLabel, { color: C.textSoft }]}>
+              Push Notifications
+            </Text>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={setNotificationsEnabled}
+              trackColor={{ false: C.border, true: C.accentMid }}
+              thumbColor={notificationsEnabled ? C.accentGlow : C.textFaint}
+            />
           </View>
-          <Text style={[s.menuLabel, { color: theme.whiteMuted }]}>
-            Push Notifications
-          </Text>
-          <Switch
-            value={notificationsEnabled}
-            onValueChange={setNotificationsEnabled}
-            trackColor={{ false: theme.border, true: theme.purpleMid }}
-            thumbColor={notificationsEnabled ? theme.purpleGlow : theme.faint}
-          />
         </View>
 
+        {/* ── MENU SECTIONS ────────────────────────────────────────────────── */}
         {MENU_SECTIONS.map((section, si) => (
           <View key={si} style={s.menuSection}>
-            <Text style={[s.sectionLabel, { color: theme.faint }]}>
+            <Text style={[s.sectionLabel, { color: C.textFaint }]}>
               {section.title}
             </Text>
             <View
               style={[
                 s.menuGroup,
-                { backgroundColor: theme.card, borderColor: theme.border },
+                { backgroundColor: C.card, borderColor: C.border },
               ]}
             >
               {section.items.map((item, ii) => (
                 <View key={ii}>
-                  <MenuItem item={item} theme={theme} />
-                  {ii < section.items.length - 1 ? (
+                  <TouchableOpacity
+                    style={[s.menuItem, { backgroundColor: "transparent" }]}
+                    activeOpacity={0.72}
+                  >
+                    <View style={[s.menuIconBox, { backgroundColor: item.bg }]}>
+                      <Text style={s.menuEmoji}>{item.icon}</Text>
+                    </View>
+                    <Text style={[s.menuLabel, { color: C.textSoft }]}>
+                      {item.label}
+                    </Text>
+                    <IconChevron color={C.textFaint} />
+                  </TouchableOpacity>
+                  {ii < section.items.length - 1 && (
                     <View
-                      style={[s.itemDivider, { backgroundColor: theme.border }]}
+                      style={[s.itemDivider, { backgroundColor: C.border }]}
                     />
-                  ) : null}
+                  )}
                 </View>
               ))}
             </View>
           </View>
         ))}
 
+        {/* ── LOGOUT ───────────────────────────────────────────────────────── */}
         <TouchableOpacity
           style={[
             s.logoutBtn,
-            { backgroundColor: theme.card, borderColor: theme.border },
+            {
+              backgroundColor: "rgba(239,68,68,0.08)",
+              borderColor: "rgba(239,68,68,0.25)",
+            },
           ]}
           onPress={handleLogout}
+          activeOpacity={0.8}
         >
-          <IconLogout color={theme.white} />
-          <Text style={[s.logoutText, { color: theme.white }]}>Sign Out</Text>
+          <IconLogout color="#EF4444" size={18} />
+          <Text style={[s.logoutText, { color: "#EF4444" }]}>Sign Out</Text>
         </TouchableOpacity>
 
-        <Text style={[s.version, { color: theme.faint }]}>
+        <Text style={[s.version, { color: C.textFaint }]}>
           Unimaid Resources v1.0.0
         </Text>
       </ScrollView>
 
+      {/* ── EDIT MODAL ────────────────────────────────────────────────────── */}
       <Modal
-        animationType="fade"
+        animationType="slide"
         transparent
         visible={editModalVisible}
         onRequestClose={() => setEditModalVisible(false)}
@@ -701,380 +1021,360 @@ export default function Profile() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 20}
         >
-          <TouchableWithoutFeedback
-            onPress={() => {
-              Keyboard.dismiss();
-              setEditModalVisible(false);
-            }}
-          >
-            <View style={s.modalOverlay}>
-              <TouchableWithoutFeedback onPress={() => {}}>
-                <View
+          <View style={s.modalOverlay}>
+            <View
+              style={[
+                s.modalSheet,
+                { backgroundColor: C.card, borderColor: C.borderStrong },
+              ]}
+            >
+              {/* Handle */}
+              <View
+                style={[s.modalHandle, { backgroundColor: C.borderStrong }]}
+              />
+
+              {/* Header */}
+              <View style={[s.modalHeader, { borderBottomColor: C.border }]}>
+                <Text style={[s.modalTitle, { color: C.text }]}>
+                  Edit Profile
+                </Text>
+                <TouchableOpacity
                   style={[
-                    s.modalContent,
-                    {
-                      backgroundColor: theme.card,
-                      borderColor: theme.border,
-                    },
+                    s.modalCloseBtn,
+                    { backgroundColor: C.cardHover, borderColor: C.border },
                   ]}
+                  onPress={() => setEditModalVisible(false)}
                 >
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={s.modalScrollContent}
+                  <IconX color={C.textMuted} size={15} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+              >
+                {/* Avatar preview */}
+                <View style={s.modalAvatarRow}>
+                  <View
+                    style={[
+                      s.modalAvatar,
+                      {
+                        backgroundColor: (editForm.color || avatarColor) + "22",
+                        borderColor: (editForm.color || avatarColor) + "66",
+                      },
+                    ]}
                   >
-                    <Text style={[s.modalTitle, { color: theme.white }]}>
-                      Edit Profile
-                    </Text>
-
-                    <Text style={[s.modalLabel, { color: theme.white }]}>
-                      Full Name
-                    </Text>
-                    <TextInput
+                    <Text
                       style={[
-                        s.modalInput,
-                        {
-                          backgroundColor: theme.inputBg,
-                          color: theme.white,
-                          borderColor: theme.border,
-                        },
+                        s.modalAvatarText,
+                        { color: editForm.color || avatarColor },
                       ]}
-                      value={editForm.full_name}
-                      onChangeText={(text) =>
-                        setEditForm({ ...editForm, full_name: text })
-                      }
-                      placeholder="Your full name"
-                      placeholderTextColor={theme.faint}
-                      autoCapitalize="words"
-                    />
-
-                    <Text style={[s.modalLabel, { color: theme.white }]}>
-                      Bio
+                    >
+                      {editForm.initials || initials}
                     </Text>
-                    <TextInput
-                      style={[
-                        s.modalInput,
-                        {
-                          minHeight: 100,
-                          textAlignVertical: "top",
-                          backgroundColor: theme.inputBg,
-                          color: theme.white,
-                          borderColor: theme.border,
-                        },
-                      ]}
-                      value={editForm.bio}
-                      onChangeText={(text) =>
-                        setEditForm({ ...editForm, bio: text })
-                      }
-                      placeholder="Tell us about yourself..."
-                      placeholderTextColor={theme.faint}
-                      multiline
-                    />
-
-                    <Text style={[s.modalLabel, { color: theme.white }]}>
-                      Department
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.modalAvatarHint, { color: C.textMuted }]}>
+                      Preview of your avatar
                     </Text>
-                    <TextInput
+                    <Text
                       style={[
-                        s.modalInput,
-                        {
-                          backgroundColor: theme.inputBg,
-                          color: theme.white,
-                          borderColor: theme.border,
-                        },
+                        { color: C.textFaint, fontSize: 12, marginTop: 2 },
                       ]}
-                      value={editForm.department}
-                      onChangeText={(text) =>
-                        setEditForm({ ...editForm, department: text })
-                      }
-                      placeholder="e.g. Computer Science"
-                      placeholderTextColor={theme.faint}
-                    />
-
-                    <Text style={[s.modalLabel, { color: theme.white }]}>
-                      Level
+                    >
+                      Initials & color update live
                     </Text>
-                    <TextInput
-                      style={[
-                        s.modalInput,
-                        {
-                          backgroundColor: theme.inputBg,
-                          color: theme.white,
-                          borderColor: theme.border,
-                        },
-                      ]}
-                      value={editForm.level}
-                      onChangeText={(text) =>
-                        setEditForm({ ...editForm, level: text })
-                      }
-                      placeholder="e.g. 300L"
-                      placeholderTextColor={theme.faint}
-                    />
-
-                    <Text style={[s.modalLabel, { color: theme.white }]}>
-                      Initials (2 letters)
-                    </Text>
-                    <TextInput
-                      style={[
-                        s.modalInput,
-                        {
-                          backgroundColor: theme.inputBg,
-                          color: theme.white,
-                          borderColor: theme.border,
-                        },
-                      ]}
-                      value={editForm.initials}
-                      onChangeText={(text) =>
-                        setEditForm({
-                          ...editForm,
-                          initials: text.toUpperCase().slice(0, 2),
-                        })
-                      }
-                      placeholder="e.g. AE"
-                      placeholderTextColor={theme.faint}
-                      maxLength={2}
-                      autoCapitalize="characters"
-                    />
-
-                    <Text style={[s.modalLabel, { color: theme.white }]}>
-                      Accent Color (#HEX)
-                    </Text>
-                    <TextInput
-                      style={[
-                        s.modalInput,
-                        {
-                          backgroundColor: theme.inputBg,
-                          color: theme.white,
-                          borderColor: theme.border,
-                        },
-                      ]}
-                      value={editForm.color}
-                      onChangeText={(text) =>
-                        setEditForm({ ...editForm, color: text })
-                      }
-                      placeholder="#7C3AED"
-                      placeholderTextColor={theme.faint}
-                    />
-
-                    <Text style={[s.modalLabel, { color: theme.white }]}>
-                      Avatar URL (optional)
-                    </Text>
-                    <TextInput
-                      style={[
-                        s.modalInput,
-                        {
-                          backgroundColor: theme.inputBg,
-                          color: theme.white,
-                          borderColor: theme.border,
-                        },
-                      ]}
-                      value={editForm.avatar_url}
-                      onChangeText={(text) =>
-                        setEditForm({ ...editForm, avatar_url: text })
-                      }
-                      placeholder="https://example.com/avatar.jpg"
-                      placeholderTextColor={theme.faint}
-                    />
-
-                    <View style={s.modalButtons}>
-                      <TouchableOpacity
-                        style={[
-                          s.modalCancel,
-                          { backgroundColor: theme.border },
-                        ]}
-                        onPress={() => setEditModalVisible(false)}
-                      >
-                        <Text
-                          style={[s.modalButtonText, { color: theme.white }]}
-                        >
-                          Cancel
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        style={[
-                          s.modalSave,
-                          { backgroundColor: theme.purpleMid },
-                        ]}
-                        onPress={handleSaveProfile}
-                      >
-                        <Text style={[s.modalButtonText, { color: "#FFFFFF" }]}>
-                          Save Changes
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </ScrollView>
+                  </View>
                 </View>
-              </TouchableWithoutFeedback>
+
+                <FieldInput
+                  label="Full Name"
+                  value={editForm.full_name}
+                  onChange={(v) => setEditForm({ ...editForm, full_name: v })}
+                  placeholder="Your full name"
+                  autoCapitalize="words"
+                  C={C}
+                />
+
+                <FieldInput
+                  label="Bio"
+                  value={editForm.bio}
+                  onChange={(v) => setEditForm({ ...editForm, bio: v })}
+                  placeholder="Tell us about yourself…"
+                  multiline
+                  C={C}
+                />
+
+                <FieldInput
+                  label="Department"
+                  value={editForm.department}
+                  onChange={(v) => setEditForm({ ...editForm, department: v })}
+                  placeholder="e.g. Computer Science"
+                  autoCapitalize="words"
+                  C={C}
+                />
+
+                <FieldInput
+                  label="Level"
+                  value={editForm.level}
+                  onChange={(v) => setEditForm({ ...editForm, level: v })}
+                  placeholder="e.g. 300L"
+                  C={C}
+                />
+
+                <FieldInput
+                  label="Initials (2 letters)"
+                  value={editForm.initials}
+                  onChange={(v) =>
+                    setEditForm({
+                      ...editForm,
+                      initials: v.toUpperCase().slice(0, 2),
+                    })
+                  }
+                  placeholder="e.g. AE"
+                  maxLength={2}
+                  autoCapitalize="characters"
+                  C={C}
+                />
+
+                <FieldInput
+                  label="Accent Color (#HEX)"
+                  value={editForm.color}
+                  onChange={(v) => setEditForm({ ...editForm, color: v })}
+                  placeholder="#7C5CFC"
+                  C={C}
+                />
+
+                <FieldInput
+                  label="Avatar URL (optional)"
+                  value={editForm.avatar_url}
+                  onChange={(v) => setEditForm({ ...editForm, avatar_url: v })}
+                  placeholder="https://example.com/avatar.jpg"
+                  autoCapitalize="none"
+                  C={C}
+                />
+
+                {/* Buttons */}
+                <View style={s.modalButtons}>
+                  <TouchableOpacity
+                    style={[
+                      s.modalCancelBtn,
+                      { backgroundColor: C.cardHover, borderColor: C.border },
+                    ]}
+                    onPress={() => setEditModalVisible(false)}
+                  >
+                    <Text style={[s.modalBtnText, { color: C.textMuted }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      s.modalSaveBtn,
+                      {
+                        backgroundColor: C.accentMid,
+                        opacity: saving ? 0.7 : 1,
+                        shadowColor: C.accent,
+                      },
+                    ]}
+                    onPress={handleSaveProfile}
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <ActivityIndicator size={16} color="#fff" />
+                    ) : (
+                      <IconCheck color="#fff" size={16} />
+                    )}
+                    <Text style={s.modalBtnTextWhite}>
+                      {saving ? "Saving…" : "Save Changes"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
-          </TouchableWithoutFeedback>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      <BottomNav active="profile" />
+      <BottomNav active="profile" C={C} />
     </SafeAreaView>
   );
 }
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
+
 const s = StyleSheet.create({
   safe: { flex: 1 },
+  centerWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
+  accentLine: { height: 2, width: "100%", opacity: 0.6 },
 
+  // Top bar
   topBar: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 2,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
     borderBottomWidth: 1,
   },
-
-  wordmark: {
-    fontSize: 21,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-  },
-
-  wordmarkAccent: {
-    fontWeight: "900",
-    letterSpacing: 0.8,
-  },
-
-  wordmarkSub: {
-    fontSize: 11,
-    marginTop: 2,
-    letterSpacing: 0.4,
-  },
-
-  usernameTag: {
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-    marginTop: 2,
-  },
-
-  topActions: { flexDirection: "row", gap: 8 },
-
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
+  logoMark: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
+  },
+  logoMarkText: { fontSize: 18, fontWeight: "900" },
+  wordmark: { fontSize: 15, fontWeight: "800", letterSpacing: 0.5 },
+  wordmarkSub: { fontSize: 11, marginTop: 1 },
+  topActions: { flexDirection: "row", gap: 8 },
+  iconBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
   },
 
-  hero: {
-    alignItems: "center",
-    paddingTop: 24,
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-    gap: 6,
-  },
-
-  avatarWrap: { position: "relative", marginBottom: 4 },
-
-  avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2.5,
-    borderColor: "rgba(139,92,246,0.45)",
-  },
-
-  avatarText: { fontSize: 34, fontWeight: "900" },
-
-  editBtn: {
+  // Theme dropdown
+  themeDropdown: {
     position: "absolute",
-    bottom: -4,
-    right: -4,
-    width: 30,
-    height: 30,
-    borderRadius: 10,
+    top: 46,
+    right: 0,
+    width: 150,
+    borderRadius: 14,
+    borderWidth: 1,
+    zIndex: 999,
+    overflow: "hidden",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 20,
+    elevation: 16,
+  },
+  themeOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  themeLabel: { fontSize: 14, flex: 1 },
+  themeDot: { width: 6, height: 6, borderRadius: 3 },
+
+  // Hero card
+  heroCard: {
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  heroBanner: { height: 52, position: "relative" },
+  heroBannerStripe: {
+    position: "absolute",
+    right: -20,
+    top: 0,
+    bottom: 0,
+    width: "55%",
+    borderBottomLeftRadius: 40,
+  },
+  heroBody: { padding: 16, paddingTop: 0, alignItems: "center" },
+  avatarWrap: { position: "relative", marginTop: -30, marginBottom: 10 },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+  },
+  avatarText: { fontSize: 28, fontWeight: "900" },
+  editAvatarBtn: {
+    position: "absolute",
+    bottom: -3,
+    right: -3,
+    width: 26,
+    height: 26,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
   },
-
-  name: { fontSize: 23, fontWeight: "900", marginTop: 4 },
-
-  handle: {
-    fontSize: 13,
-    fontStyle: "italic",
-    textAlign: "center",
-  },
-
-  bio: {
+  heroInfo: { alignItems: "center", gap: 3, marginBottom: 14 },
+  heroName: { fontSize: 22, fontWeight: "800" },
+  heroHandle: { fontSize: 13, fontWeight: "600" },
+  heroDept: { fontSize: 12 },
+  heroBio: {
     fontSize: 13,
     textAlign: "center",
-    lineHeight: 20,
-    marginTop: 2,
+    lineHeight: 19,
+    marginTop: 4,
+    paddingHorizontal: 20,
   },
-
   editProfileBtn: {
-    marginTop: 10,
-    paddingHorizontal: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 22,
     paddingVertical: 9,
     borderRadius: 20,
     borderWidth: 1.5,
   },
-
   editProfileText: { fontWeight: "700", fontSize: 14 },
 
+  // Stats
   statsCard: {
     flexDirection: "row",
-    marginHorizontal: 20,
-    marginBottom: 16,
+    marginHorizontal: 16,
+    marginBottom: 10,
     borderWidth: 1,
     borderRadius: 18,
     overflow: "hidden",
   },
-
   statBox: { flex: 1, paddingVertical: 16, alignItems: "center" },
-
   statDivider: { width: 1, marginVertical: 12 },
-
-  statNum: { fontSize: 22, fontWeight: "900" },
-
+  statNum: { fontSize: 22, fontWeight: "800" },
   statLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
     marginTop: 2,
   },
 
-  toggleCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    marginHorizontal: 20,
-    marginBottom: 8,
-    padding: 13,
-    borderWidth: 1,
-    borderRadius: 14,
-  },
-
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1.4,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 6,
-  },
-
-  menuSection: { marginBottom: 4 },
-
-  menuGroup: {
-    marginHorizontal: 20,
+  // Toggles card
+  togglesCard: {
+    marginHorizontal: 16,
+    marginBottom: 10,
     borderWidth: 1,
     borderRadius: 16,
     overflow: "hidden",
   },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    padding: 13,
+  },
 
+  // Menu
+  sectionLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.4,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+  menuSection: { marginBottom: 4 },
+  menuGroup: {
+    marginHorizontal: 16,
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1082,9 +1382,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 13,
   },
-
-  itemDivider: { height: 1, marginLeft: 64 },
-
   menuIconBox: {
     width: 36,
     height: 36,
@@ -1092,96 +1389,142 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  menuEmoji: { fontSize: 16 },
-
+  menuEmoji: { fontSize: 17 },
   menuLabel: { flex: 1, fontSize: 14, fontWeight: "600" },
+  itemDivider: { height: 1, marginLeft: 64 },
 
+  // Logout
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    marginHorizontal: 20,
-    marginTop: 20,
+    marginHorizontal: 16,
+    marginTop: 16,
     paddingVertical: 14,
     borderWidth: 1,
     borderRadius: 14,
   },
-
   logoutText: { fontSize: 15, fontWeight: "700" },
-
   version: {
     textAlign: "center",
     fontSize: 11,
-    marginTop: 20,
+    marginTop: 18,
     marginBottom: 4,
     letterSpacing: 0.4,
   },
 
+  // Modal
   modalOverlay: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.88)",
-    paddingHorizontal: 12,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.75)",
   },
-
-  modalContent: {
-    borderRadius: 24,
-    width: "100%",
-    maxWidth: 420,
-    maxHeight: "82%",
-    paddingHorizontal: 24,
-    paddingTop: 32,
-    paddingBottom: 40,
-    borderWidth: 1.5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 25,
-  },
-
-  modalScrollContent: { paddingBottom: 60 },
-
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 24,
-    textAlign: "center",
-  },
-
-  modalLabel: { fontSize: 14, marginBottom: 8, fontWeight: "600" },
-
-  modalInput: {
+  modalSheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    fontSize: 16,
-    marginBottom: 20,
+    maxHeight: "92%",
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 24,
   },
-
-  modalButtons: {
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  modalHeader: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 32,
-    gap: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
   },
-
-  modalCancel: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
+  modalTitle: { fontSize: 18, fontWeight: "800" },
+  modalCloseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
     alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
   },
-
-  modalSave: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: 12,
+  modalAvatarRow: {
+    flexDirection: "row",
     alignItems: "center",
+    gap: 14,
+    marginBottom: 22,
+    padding: 14,
+    borderRadius: 14,
   },
+  modalAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+  },
+  modalAvatarText: { fontSize: 20, fontWeight: "900" },
+  modalAvatarHint: { fontSize: 14, fontWeight: "600" },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.3,
+    marginBottom: 7,
+  },
+  modalInput: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  modalButtons: { flexDirection: "row", gap: 12, marginTop: 8 },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalSaveBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  modalBtnText: { fontSize: 15, fontWeight: "600" },
+  modalBtnTextWhite: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
-  modalButtonText: { fontSize: 16, fontWeight: "700" },
+  // Bottom nav
+  bottomNav: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    paddingBottom: 10,
+    paddingTop: 8,
+  },
+  navItem: { flex: 1, alignItems: "center", gap: 3 },
+  navIconWrap: {
+    width: 46,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navLabel: { fontSize: 10, letterSpacing: 0.2 },
 });

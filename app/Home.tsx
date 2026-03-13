@@ -1,13 +1,16 @@
 /*
   File: app/Home.tsx
   Purpose: Unimaid Resources — Real Chats Home Screen
+  Fix: Theme switching now actually works. C (static import) replaced with
+       live T object that re-renders the whole screen when theme changes.
 */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Keyboard,
   Platform,
   ScrollView,
@@ -23,9 +26,92 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path } from "react-native-svg";
-import { C } from "./constants/theme";
 
 const API_BASE = "https://unresources.cravii.ng/api";
+
+// ─── THEME DEFINITIONS ───────────────────────────────────────────────────────
+// Replaces the static C import from ./constants/theme.
+// All colors come from T (the live selected theme), never from a static import.
+
+type ThemeMode = "dark" | "light" | "midnight" | "forest";
+
+const THEMES = {
+  dark: {
+    bg: "#08080F",
+    bgDeep: "#000000",
+    card: "#0F0F1C",
+    border: "#1C1C30",
+    white: "#FFFFFF",
+    whiteSoft: "#E5E5F0",
+    whiteMuted: "#A0A0B8",
+    faint: "#4B4B6B",
+    purpleGlow: "#9B7EFF",
+    purpleMid: "#6B2ED9",
+    purpleFaint: "#2A1A4D",
+    online: "#22D3A0",
+    navBg: "#0A0A16",
+    statusBar: "light-content" as const,
+  },
+  light: {
+    bg: "#F4F5FB",
+    bgDeep: "#ECEDF7",
+    card: "#FFFFFF",
+    border: "#E2E3F0",
+    white: "#1A1B2E",
+    whiteSoft: "#2D2F52",
+    whiteMuted: "#4A4C70",
+    faint: "#9B9EC0",
+    purpleGlow: "#6244E5",
+    purpleMid: "#5234C8",
+    purpleFaint: "rgba(98,68,229,0.1)",
+    online: "#16B98C",
+    navBg: "#FFFFFF",
+    statusBar: "dark-content" as const,
+  },
+  midnight: {
+    bg: "#060810",
+    bgDeep: "#030408",
+    card: "#0C0E1A",
+    border: "#141830",
+    white: "#E8EAFF",
+    whiteSoft: "#B0B4E0",
+    whiteMuted: "#7A7EA8",
+    faint: "#303460",
+    purpleGlow: "#7AAEFF",
+    purpleMid: "#3B78F0",
+    purpleFaint: "rgba(79,142,255,0.12)",
+    online: "#00E5B0",
+    navBg: "#070912",
+    statusBar: "light-content" as const,
+  },
+  forest: {
+    bg: "#0A120E",
+    bgDeep: "#060D09",
+    card: "#0F1A12",
+    border: "#182A1E",
+    white: "#E6F0E8",
+    whiteSoft: "#B8CEBE",
+    whiteMuted: "#7A9882",
+    faint: "#304038",
+    purpleGlow: "#4EEEA0",
+    purpleMid: "#22B86A",
+    purpleFaint: "rgba(45,216,130,0.12)",
+    online: "#FFE066",
+    navBg: "#0B140F",
+    statusBar: "light-content" as const,
+  },
+};
+
+type Theme = (typeof THEMES)["dark"];
+
+const THEME_LABELS: Record<ThemeMode, { icon: string; label: string }> = {
+  dark: { icon: "◐", label: "Dark" },
+  light: { icon: "○", label: "Light" },
+  midnight: { icon: "●", label: "Night" },
+  forest: { icon: "◈", label: "Forest" },
+};
+
+// ─── TYPES ───────────────────────────────────────────────────────────────────
 
 type UserType = {
   id: number | string;
@@ -55,15 +141,13 @@ type SuggestionUser = {
   online?: boolean;
 };
 
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+
 function getInitials(name: string) {
   const clean = (name || "").trim();
   if (!clean) return "U";
-
   const parts = clean.split(" ").filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase();
-  }
-
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return clean.slice(0, 2).toUpperCase();
 }
 
@@ -78,16 +162,15 @@ function stringToColor(text: string) {
     "#DB2777",
     "#4F46E5",
   ];
-
   let hash = 0;
-  for (let i = 0; i < text.length; i++) {
+  for (let i = 0; i < text.length; i++)
     hash = text.charCodeAt(i) + ((hash << 5) - hash);
-  }
-
   return colors[Math.abs(hash) % colors.length];
 }
 
-function IconChat({ color = C.white, size = 21 }) {
+// ─── ICONS (all accept explicit color prop — no static C references) ─────────
+
+function IconChat({ color, size = 21 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -101,7 +184,7 @@ function IconChat({ color = C.white, size = 21 }) {
   );
 }
 
-function IconStatus({ color = C.white, size = 21 }) {
+function IconStatus({ color, size = 21 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="8" r="4" stroke={color} strokeWidth={1.8} />
@@ -115,7 +198,7 @@ function IconStatus({ color = C.white, size = 21 }) {
   );
 }
 
-function IconMarket({ color = C.white, size = 21 }) {
+function IconMarket({ color, size = 21 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -144,7 +227,7 @@ function IconMarket({ color = C.white, size = 21 }) {
   );
 }
 
-function IconProfile({ color = C.white, size = 21 }) {
+function IconProfile({ color, size = 21 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="8" r="3.5" stroke={color} strokeWidth={1.8} />
@@ -158,7 +241,7 @@ function IconProfile({ color = C.white, size = 21 }) {
   );
 }
 
-function IconSearch({ color = C.faint, size = 17 }) {
+function IconSearch({ color, size = 17 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={1.9} />
@@ -175,7 +258,7 @@ function IconSearch({ color = C.faint, size = 17 }) {
   );
 }
 
-function IconBell({ color = C.whiteMuted, size = 19 }) {
+function IconBell({ color, size = 19 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -195,7 +278,7 @@ function IconBell({ color = C.whiteMuted, size = 19 }) {
   );
 }
 
-function IconEdit({ color = C.white, size = 18 }) {
+function IconEdit({ color, size = 18 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -216,39 +299,176 @@ function IconEdit({ color = C.white, size = 18 }) {
   );
 }
 
-const NAV_ITEMS = [
-  { id: "chats", label: "Chats", route: "/Home", badge: 0 },
-  { id: "status", label: "Status", route: "/Status", badge: 0 },
-  { id: "marketplace", label: "Market", route: "/Marketplace", badge: 0 },
-  { id: "profile", label: "Profile", route: "/Profile", badge: 0 },
-];
-
-function NavIcon({ id, color }: { id: string; color: string }) {
-  if (id === "chats") return <IconChat color={color} />;
-  if (id === "status") return <IconStatus color={color} />;
-  if (id === "marketplace") return <IconMarket color={color} />;
-  if (id === "profile") return <IconProfile color={color} />;
-  return null;
+function IconPalette({ color, size = 19 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2v-.5c0-.55-.22-1.05-.59-1.41-.36-.36-.59-.86-.59-1.41 0-1.1.9-2 2-2h2c3.31 0 6-2.69 6-6 0-4.96-4.48-9-10-9z"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+      />
+      <Circle cx="8.5" cy="10.5" r="1" fill={color} />
+      <Circle cx="12" cy="7.5" r="1" fill={color} />
+      <Circle cx="15.5" cy="10.5" r="1" fill={color} />
+    </Svg>
+  );
 }
 
-export function BottomNav({ active }: { active: string }) {
-  const router = useRouter();
+// ─── THEME SWITCHER ──────────────────────────────────────────────────────────
+
+function ThemeSwitcher({
+  current,
+  onChange,
+  T,
+}: {
+  current: ThemeMode;
+  onChange: (t: ThemeMode) => void;
+  T: Theme;
+}) {
+  const [open, setOpen] = useState(false);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  const toggle = () => {
+    const toValue = open ? 0 : 1;
+    setOpen(!open);
+    Animated.spring(anim, {
+      toValue,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 10,
+    }).start();
+  };
 
   return (
-    <View style={s.bottomNav}>
+    <View style={{ position: "relative" }}>
+      <TouchableOpacity
+        style={[
+          ss.iconBtn,
+          {
+            backgroundColor: T.card,
+            borderColor: open ? T.purpleMid : T.border,
+          },
+        ]}
+        onPress={toggle}
+        activeOpacity={0.75}
+      >
+        <IconPalette color={open ? T.purpleGlow : T.whiteMuted} size={19} />
+      </TouchableOpacity>
+
+      {open && (
+        <Animated.View
+          style={[
+            ss.themeDropdown,
+            {
+              backgroundColor: T.card,
+              borderColor: T.border,
+              opacity: anim,
+              transform: [
+                {
+                  scale: anim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.85, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          {(Object.keys(THEME_LABELS) as ThemeMode[]).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[
+                ss.themeOption,
+                current === t && { backgroundColor: T.purpleFaint },
+              ]}
+              onPress={() => {
+                onChange(t);
+                setOpen(false);
+              }}
+            >
+              <Text style={{ fontSize: 16, marginRight: 8 }}>
+                {THEME_LABELS[t].icon}
+              </Text>
+              <Text
+                style={[
+                  ss.themeLabel,
+                  {
+                    color: current === t ? T.purpleGlow : T.whiteMuted,
+                    fontWeight: current === t ? "700" : "500",
+                  },
+                ]}
+              >
+                {THEME_LABELS[t].label}
+              </Text>
+              {current === t && (
+                <View
+                  style={[ss.themeDot, { backgroundColor: T.purpleGlow }]}
+                />
+              )}
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
+// ─── NAV ─────────────────────────────────────────────────────────────────────
+
+const NAV_ITEMS = [
+  { id: "chats", label: "Chats", route: "/Home" },
+  { id: "status", label: "Status", route: "/Status" },
+  { id: "marketplace", label: "Market", route: "/Marketplace" },
+  { id: "profile", label: "Profile", route: "/Profile" },
+];
+
+export function BottomNav({ active, T }: { active: string; T: Theme }) {
+  const router = useRouter();
+  return (
+    <View
+      style={[
+        ss.bottomNav,
+        { backgroundColor: T.navBg, borderTopColor: T.border },
+      ]}
+    >
       {NAV_ITEMS.map((tab) => {
         const isActive = active === tab.id;
         return (
           <TouchableOpacity
             key={tab.id}
-            style={s.navItem}
+            style={ss.navItem}
             onPress={() => router.replace(tab.route as any)}
             activeOpacity={0.7}
           >
-            <View style={[s.navIconWrap, isActive && s.navIconWrapActive]}>
-              <NavIcon id={tab.id} color={isActive ? C.purpleGlow : C.faint} />
+            <View
+              style={[
+                ss.navIconWrap,
+                isActive && { backgroundColor: T.purpleFaint },
+              ]}
+            >
+              {tab.id === "chats" && (
+                <IconChat color={isActive ? T.purpleGlow : T.faint} />
+              )}
+              {tab.id === "status" && (
+                <IconStatus color={isActive ? T.purpleGlow : T.faint} />
+              )}
+              {tab.id === "marketplace" && (
+                <IconMarket color={isActive ? T.purpleGlow : T.faint} />
+              )}
+              {tab.id === "profile" && (
+                <IconProfile color={isActive ? T.purpleGlow : T.faint} />
+              )}
             </View>
-            <Text style={[s.navLabel, isActive && s.navLabelActive]}>
+            <Text
+              style={[
+                ss.navLabel,
+                {
+                  color: isActive ? T.purpleGlow : T.faint,
+                  fontWeight: isActive ? "700" : "600",
+                },
+              ]}
+            >
               {tab.label}
             </Text>
           </TouchableOpacity>
@@ -258,37 +478,60 @@ export function BottomNav({ active }: { active: string }) {
   );
 }
 
-export function TopBar({ username }: { username?: string }) {
-  return (
-    <View style={s.topBar}>
-      <View style={{ flex: 1, paddingRight: 10 }}>
-        <Text style={s.wordmark}>
-          {"UNIMAID "}
-          <Text style={s.wordmarkAccent}>RESOURCES</Text>
-        </Text>
+// ─── TOP BAR ─────────────────────────────────────────────────────────────────
 
+export function TopBar({
+  username,
+  theme,
+  onThemeChange,
+  T,
+}: {
+  username?: string;
+  theme: ThemeMode;
+  onThemeChange: (t: ThemeMode) => void;
+  T: Theme;
+}) {
+  return (
+    <View style={[ss.topBar, { borderBottomColor: T.border }]}>
+      <View style={{ flex: 1, paddingRight: 10 }}>
+        <Text style={[ss.wordmark, { color: T.white }]}>
+          {"UNIMAID "}
+          <Text style={[ss.wordmarkAccent, { color: T.purpleGlow }]}>
+            RESOURCES
+          </Text>
+        </Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text style={s.wordmarkSub}>University of Maiduguri</Text>
+          <Text style={[ss.wordmarkSub, { color: T.faint }]}>
+            University of Maiduguri
+          </Text>
           {username ? (
             <>
-              <Text style={[s.wordmarkSub, { color: C.faint }]}>·</Text>
-              <Text style={s.usernameTag}>@{username}</Text>
+              <Text style={{ color: T.faint, fontSize: 11 }}>·</Text>
+              <Text style={[ss.usernameTag, { color: T.white }]}>
+                @{username}
+              </Text>
             </>
           ) : null}
         </View>
       </View>
 
-      <View style={s.topActions}>
-        <TouchableOpacity style={s.iconBtn}>
-          <IconSearch color={C.whiteMuted} size={17} />
-        </TouchableOpacity>
-        <TouchableOpacity style={s.iconBtn}>
-          <IconBell color={C.whiteMuted} size={19} />
+      <View style={ss.topActions}>
+        {/* Theme switcher — replaces old search icon */}
+        <ThemeSwitcher current={theme} onChange={onThemeChange} T={T} />
+        <TouchableOpacity
+          style={[
+            ss.iconBtn,
+            { backgroundColor: T.card, borderColor: T.border },
+          ]}
+        >
+          <IconBell color={T.whiteMuted} size={19} />
         </TouchableOpacity>
       </View>
     </View>
   );
 }
+
+// ─── AVATAR ──────────────────────────────────────────────────────────────────
 
 function Avatar({
   initials,
@@ -296,18 +539,20 @@ function Avatar({
   size = 50,
   radius = 16,
   online = false,
+  T,
 }: {
   initials: string;
   color: string;
   size?: number;
   radius?: number;
   online?: boolean;
+  T: Theme;
 }) {
   return (
     <View style={{ width: size, height: size }}>
       <View
         style={[
-          s.avatarBase,
+          ss.avatarBase,
           {
             width: size,
             height: size,
@@ -316,49 +561,67 @@ function Avatar({
           },
         ]}
       >
-        <Text style={[s.avatarText, { fontSize: size * 0.33 }]}>
+        <Text style={[ss.avatarText, { fontSize: size * 0.33 }]}>
           {initials}
         </Text>
       </View>
-      {online ? <View style={s.onlineDot} /> : null}
+      {online ? (
+        <View
+          style={[
+            ss.onlineDot,
+            { backgroundColor: T.online, borderColor: T.bg },
+          ]}
+        />
+      ) : null}
     </View>
   );
 }
 
-function ChatRow({ chat, onPress }: { chat: ChatItem; onPress: () => void }) {
+// ─── CHAT ROW ────────────────────────────────────────────────────────────────
+
+function ChatRow({
+  chat,
+  onPress,
+  T,
+}: {
+  chat: ChatItem;
+  onPress: () => void;
+  T: Theme;
+}) {
   return (
-    <TouchableOpacity style={s.chatRow} activeOpacity={0.75} onPress={onPress}>
+    <TouchableOpacity style={ss.chatRow} activeOpacity={0.75} onPress={onPress}>
       <Avatar
         initials={chat.initials}
         color={chat.color}
         online={chat.online}
+        T={T}
       />
 
-      <View style={s.chatInfo}>
-        <View style={s.chatNameRow}>
-          <Text style={s.chatName} numberOfLines={1}>
+      <View style={ss.chatInfo}>
+        <View style={ss.chatNameRow}>
+          <Text style={[ss.chatName, { color: T.white }]} numberOfLines={1}>
             {chat.name}
           </Text>
-          <Text style={s.chatTimeMobile}>{chat.time}</Text>
+          <Text style={[ss.chatTime, { color: T.faint }]}>{chat.time}</Text>
         </View>
 
-        <View style={s.previewRow}>
-          <Text style={s.chatPreview} numberOfLines={1}>
+        <View style={ss.previewRow}>
+          <Text style={[ss.chatPreview, { color: T.faint }]} numberOfLines={1}>
             {chat.preview || "Start a conversation"}
           </Text>
           {chat.unread > 0 ? (
-            <View style={s.unreadBadge}>
-              <Text style={s.unreadText}>{chat.unread}</Text>
+            <View style={[ss.unreadBadge, { backgroundColor: T.purpleMid }]}>
+              <Text style={ss.unreadText}>{chat.unread}</Text>
             </View>
           ) : null}
         </View>
       </View>
 
-      <View style={s.chatMeta}>
-        <Text style={s.chatTime}>{chat.time}</Text>
+      <View style={ss.chatMeta}>
+        <Text style={[ss.chatTimeRight, { color: T.faint }]}>{chat.time}</Text>
         {chat.unread > 0 ? (
-          <View style={s.unreadBadge}>
-            <Text style={s.unreadText}>{chat.unread}</Text>
+          <View style={[ss.unreadBadge, { backgroundColor: T.purpleMid }]}>
+            <Text style={ss.unreadText}>{chat.unread}</Text>
           </View>
         ) : null}
       </View>
@@ -366,10 +629,16 @@ function ChatRow({ chat, onPress }: { chat: ChatItem; onPress: () => void }) {
   );
 }
 
+// ─── HOME SCREEN ─────────────────────────────────────────────────────────────
+
 export default function Home() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user: passedUser } = useLocalSearchParams();
+
+  // themeMode drives T — changing it instantly re-renders everything
+  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
+  const T: Theme = THEMES[themeMode];
 
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>("");
@@ -380,13 +649,27 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
 
+  // Load saved theme on mount
+  useEffect(() => {
+    SecureStore.getItemAsync("theme")
+      .then((saved) => {
+        if (saved && THEMES[saved as ThemeMode])
+          setThemeMode(saved as ThemeMode);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleThemeChange = (t: ThemeMode) => {
+    setThemeMode(t); // instant re-render with new colors
+    SecureStore.setItemAsync("theme", t).catch(() => {});
+  };
+
   const loadChatList = async (userId: string) => {
     try {
       const res = await fetch(
         `${API_BASE}/get_chat_list.php?user_id=${encodeURIComponent(userId)}`,
       );
       const text = await res.text();
-
       let data;
       try {
         data = JSON.parse(text);
@@ -394,7 +677,6 @@ export default function Home() {
         console.log("Invalid get_chat_list response:", text);
         return;
       }
-
       if (data.status === "success") {
         const mapped: ChatItem[] = (data.chats || []).map((chat: any) => ({
           id: chat.id,
@@ -407,7 +689,6 @@ export default function Home() {
           unread: Number(chat.unread || 0),
           pinned: false,
         }));
-
         setChats(mapped);
       }
     } catch (err) {
@@ -416,31 +697,24 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const loadUserAndChats = async () => {
+    const init = async () => {
       setLoading(true);
       setError(null);
-
       try {
         let userData: UserType | null = null;
-
-        if (passedUser && typeof passedUser === "string") {
+        if (passedUser && typeof passedUser === "string")
           userData = JSON.parse(passedUser);
-        }
-
         if (!userData) {
           const stored = await SecureStore.getItemAsync("user");
           if (stored) userData = JSON.parse(stored);
         }
-
         if (!userData?.id) {
           setError("No logged-in user found");
           setLoading(false);
           return;
         }
-
         setCurrentUser(userData);
         setCurrentUserId(String(userData.id));
-
         await loadChatList(String(userData.id));
       } catch (err) {
         setError("Failed to load chats");
@@ -449,17 +723,12 @@ export default function Home() {
         setLoading(false);
       }
     };
-
-    loadUserAndChats();
+    init();
   }, [passedUser]);
 
   useEffect(() => {
     if (!currentUserId) return;
-
-    const interval = setInterval(() => {
-      loadChatList(currentUserId);
-    }, 3000);
-
+    const interval = setInterval(() => loadChatList(currentUserId), 3000);
     return () => clearInterval(interval);
   }, [currentUserId]);
 
@@ -469,15 +738,12 @@ export default function Home() {
         setSuggestions([]);
         return;
       }
-
       try {
         const res = await fetch(
           `${API_BASE}/search_users.php?q=${encodeURIComponent(query.trim())}`,
         );
         const text = await res.text();
-
         console.log("SERVER RESPONSE:", text);
-
         let data;
         try {
           data = JSON.parse(text);
@@ -485,21 +751,18 @@ export default function Home() {
           console.log("JSON ERROR:", e);
           return;
         }
-
         if (data.status === "success") {
-          const users = (data.users || []).filter(
-            (u: SuggestionUser) => String(u.id) !== String(currentUserId),
+          setSuggestions(
+            (data.users || []).filter(
+              (u: SuggestionUser) => String(u.id) !== String(currentUserId),
+            ),
           );
-          setSuggestions(users);
-        } else {
-          setSuggestions([]);
-        }
+        } else setSuggestions([]);
       } catch (err) {
         console.error("Search error:", err);
         setSuggestions([]);
       }
     };
-
     const timeout = setTimeout(searchUsers, 400);
     return () => clearTimeout(timeout);
   }, [query, currentUserId]);
@@ -507,20 +770,13 @@ export default function Home() {
   const displayUsername = currentUser?.username;
 
   let filteredChats = [...chats];
-
-  if (query.trim()) {
-    filteredChats = filteredChats.filter((chat) =>
-      chat.name.toLowerCase().includes(query.toLowerCase()),
+  if (query.trim())
+    filteredChats = filteredChats.filter((c) =>
+      c.name.toLowerCase().includes(query.toLowerCase()),
     );
-  }
-
-  if (activeFilter === "Unread") {
-    filteredChats = filteredChats.filter((chat) => chat.unread > 0);
-  }
-
-  if (activeFilter === "Groups") {
-    filteredChats = [];
-  }
+  if (activeFilter === "Unread")
+    filteredChats = filteredChats.filter((c) => c.unread > 0);
+  if (activeFilter === "Groups") filteredChats = [];
 
   const openChat = (chat: ChatItem) => {
     router.push({
@@ -538,7 +794,6 @@ export default function Home() {
 
   const startNewChat = (user: SuggestionUser) => {
     const name = user.full_name || user.username;
-
     router.push({
       pathname: "/ChatRoom",
       params: {
@@ -551,7 +806,6 @@ export default function Home() {
         isNew: "true",
       },
     });
-
     setQuery("");
     setSuggestions([]);
     Keyboard.dismiss();
@@ -559,12 +813,15 @@ export default function Home() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
-        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <SafeAreaView
+        style={[ss.safe, { backgroundColor: T.bg }]}
+        edges={["top"]}
+      >
+        <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
         <ActivityIndicator
           size="large"
-          color={C.purpleGlow}
-          style={{ flex: 1, justifyContent: "center" }}
+          color={T.purpleGlow}
+          style={{ flex: 1 }}
         />
       </SafeAreaView>
     );
@@ -572,8 +829,11 @@ export default function Home() {
 
   if (error) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
-        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <SafeAreaView
+        style={[ss.safe, { backgroundColor: T.bg }]}
+        edges={["top"]}
+      >
+        <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
         <Text style={{ color: "#f87171", textAlign: "center", marginTop: 100 }}>
           {error}
         </Text>
@@ -582,28 +842,39 @@ export default function Home() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
-      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+    <SafeAreaView style={[ss.safe, { backgroundColor: T.bg }]} edges={["top"]}>
+      <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
 
-      <View
-        style={{
-          paddingTop: Platform.OS === "android" ? 2 : 0,
-        }}
-      >
-        <TopBar username={displayUsername} />
+      <View style={{ paddingTop: Platform.OS === "android" ? 2 : 0 }}>
+        <TopBar
+          username={displayUsername}
+          theme={themeMode}
+          onThemeChange={handleThemeChange}
+          T={T}
+        />
       </View>
 
-      <View style={s.filterRow}>
+      {/* Filters */}
+      <View style={ss.filterRow}>
         {["All", "Unread", "Groups"].map((t) => (
           <TouchableOpacity
             key={t}
-            style={[s.filterPill, activeFilter === t && s.filterPillActive]}
+            style={[
+              ss.filterPill,
+              {
+                backgroundColor: activeFilter === t ? T.purpleFaint : T.card,
+                borderColor: activeFilter === t ? T.purpleMid : T.border,
+              },
+            ]}
             onPress={() => setActiveFilter(t)}
           >
             <Text
               style={[
-                s.filterPillText,
-                activeFilter === t && s.filterPillTextActive,
+                ss.filterPillText,
+                {
+                  color: activeFilter === t ? T.purpleGlow : T.faint,
+                  fontWeight: activeFilter === t ? "700" : "600",
+                },
               ]}
             >
               {t}
@@ -612,27 +883,38 @@ export default function Home() {
         ))}
       </View>
 
+      {/* Search + suggestions */}
       <View style={{ position: "relative" }}>
-        <View style={s.searchBox}>
-          <IconSearch color={C.faint} />
+        <View
+          style={[
+            ss.searchBox,
+            { backgroundColor: T.card, borderColor: T.border },
+          ]}
+        >
+          <IconSearch color={T.faint} />
           <TextInput
-            style={s.searchInput}
+            style={[ss.searchInput, { color: T.white }]}
             placeholder="Search people or chats"
-            placeholderTextColor={C.faint}
+            placeholderTextColor={T.faint}
             value={query}
             onChangeText={setQuery}
           />
         </View>
 
         {suggestions.length > 0 && query.trim().length > 0 ? (
-          <View style={s.suggestionContainer}>
+          <View
+            style={[
+              ss.suggestionContainer,
+              { backgroundColor: T.card, borderColor: T.border },
+            ]}
+          >
             <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }}>
               {suggestions.map((user) => {
                 const name = user.full_name || user.username;
                 return (
                   <TouchableOpacity
                     key={String(user.id)}
-                    style={s.suggestionRow}
+                    style={[ss.suggestionRow, { borderBottomColor: T.border }]}
                     onPress={() => startNewChat(user)}
                   >
                     <Avatar
@@ -641,10 +923,15 @@ export default function Home() {
                       size={40}
                       radius={13}
                       online={!!user.online}
+                      T={T}
                     />
                     <View style={{ marginLeft: 12, flex: 1 }}>
-                      <Text style={s.suggestionName}>{name}</Text>
-                      <Text style={s.suggestionUsername}>@{user.username}</Text>
+                      <Text style={[ss.suggestionName, { color: T.white }]}>
+                        {name}
+                      </Text>
+                      <Text style={[ss.suggestionUsername, { color: T.faint }]}>
+                        @{user.username}
+                      </Text>
                     </View>
                   </TouchableOpacity>
                 );
@@ -654,15 +941,16 @@ export default function Home() {
         ) : null}
       </View>
 
+      {/* Chat list */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 110 }}
       >
-        <Text style={s.sectionLabel}>MESSAGES</Text>
+        <Text style={[ss.sectionLabel, { color: T.faint }]}>MESSAGES</Text>
 
         {filteredChats.length === 0 ? (
-          <Text style={{ color: C.faint, textAlign: "center", marginTop: 40 }}>
+          <Text style={{ color: T.faint, textAlign: "center", marginTop: 40 }}>
             No chats yet
           </Text>
         ) : (
@@ -671,22 +959,32 @@ export default function Home() {
               key={String(chat.id)}
               chat={chat}
               onPress={() => openChat(chat)}
+              T={T}
             />
           ))
         )}
       </ScrollView>
 
-      <TouchableOpacity style={s.fab} activeOpacity={0.85}>
-        <IconEdit color={C.white} size={19} />
+      {/* FAB */}
+      <TouchableOpacity
+        style={[
+          ss.fab,
+          { backgroundColor: T.purpleMid, shadowColor: T.purpleMid },
+        ]}
+        activeOpacity={0.85}
+      >
+        <IconEdit color="#fff" size={19} />
       </TouchableOpacity>
 
-      <BottomNav active="chats" />
+      <BottomNav active="chats" T={T} />
     </SafeAreaView>
   );
 }
 
-export const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+// ─── STYLES (layout & spacing only — zero hardcoded colors) ──────────────────
+
+const ss = StyleSheet.create({
+  safe: { flex: 1 },
 
   topBar: {
     flexDirection: "row",
@@ -696,49 +994,49 @@ export const s = StyleSheet.create({
     paddingTop: 2,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: C.border,
   },
-
-  wordmark: {
-    fontSize: 21,
-    fontWeight: "900",
-    color: C.white,
-    letterSpacing: 0.6,
-  },
-
-  wordmarkAccent: {
-    color: C.purpleGlow,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-  },
-
-  wordmarkSub: {
-    fontSize: 11,
-    color: C.faint,
-    marginTop: 2,
-    letterSpacing: 0.4,
-  },
-
+  wordmark: { fontSize: 21, fontWeight: "900", letterSpacing: 0.6 },
+  wordmarkAccent: { fontWeight: "900", letterSpacing: 0.8 },
+  wordmarkSub: { fontSize: 11, marginTop: 2, letterSpacing: 0.4 },
   usernameTag: {
     fontSize: 12,
-    color: "#FFFFFF",
     fontWeight: "900",
     letterSpacing: 0.8,
     marginTop: 2,
   },
-
   topActions: { flexDirection: "row", gap: 8 },
-
   iconBtn: {
     width: 40,
     height: 40,
     borderRadius: 13,
-    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: C.border,
     alignItems: "center",
     justifyContent: "center",
   },
+
+  themeDropdown: {
+    position: "absolute",
+    top: 48,
+    right: 0,
+    width: 150,
+    borderRadius: 14,
+    borderWidth: 1,
+    zIndex: 999,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  themeOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  themeLabel: { fontSize: 14, flex: 1 },
+  themeDot: { width: 6, height: 6, borderRadius: 3 },
 
   filterRow: {
     flexDirection: "row",
@@ -746,23 +1044,13 @@ export const s = StyleSheet.create({
     paddingVertical: 10,
     gap: 8,
   },
-
   filterPill: {
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: C.border,
   },
-
-  filterPillActive: {
-    backgroundColor: C.purpleFaint,
-    borderColor: C.purpleMid,
-  },
-
-  filterPillText: { color: C.faint, fontSize: 13, fontWeight: "600" },
-  filterPillTextActive: { color: C.purpleGlow, fontWeight: "700" },
+  filterPillText: { fontSize: 13 },
 
   searchBox: {
     flexDirection: "row",
@@ -770,25 +1058,20 @@ export const s = StyleSheet.create({
     gap: 10,
     marginHorizontal: 20,
     marginBottom: 8,
-    backgroundColor: C.card,
     borderWidth: 1,
-    borderColor: C.border,
     borderRadius: 16,
     paddingHorizontal: 14,
     height: 46,
   },
-
-  searchInput: { flex: 1, color: C.white, fontSize: 14 },
+  searchInput: { flex: 1, fontSize: 14 },
 
   suggestionContainer: {
     position: "absolute",
     top: 54,
     left: 20,
     right: 20,
-    backgroundColor: C.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: C.border,
     zIndex: 10,
     maxHeight: 240,
     overflow: "hidden",
@@ -798,40 +1081,26 @@ export const s = StyleSheet.create({
     shadowRadius: 8,
     elevation: 8,
   },
-
   suggestionRow: {
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: C.border,
   },
-
-  suggestionName: {
-    color: C.white,
-    fontWeight: "600",
-    fontSize: 15,
-  },
-
-  suggestionUsername: {
-    color: C.faint,
-    fontSize: 13,
-  },
+  suggestionName: { fontWeight: "600", fontSize: 15 },
+  suggestionUsername: { fontSize: 13 },
 
   sectionLabel: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: C.faint,
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 6,
   },
 
   avatarBase: { alignItems: "center", justifyContent: "center" },
-
-  avatarText: { color: C.white, fontWeight: "700" },
-
+  avatarText: { color: "#fff", fontWeight: "700" },
   onlineDot: {
     position: "absolute",
     bottom: 0,
@@ -839,9 +1108,7 @@ export const s = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: C.online,
     borderWidth: 2,
-    borderColor: C.bg,
   },
 
   chatRow: {
@@ -851,9 +1118,7 @@ export const s = StyleSheet.create({
     paddingVertical: 12,
     gap: 13,
   },
-
   chatInfo: { flex: 1, minWidth: 0 },
-
   chatNameRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -861,44 +1126,19 @@ export const s = StyleSheet.create({
     gap: 10,
     marginBottom: 4,
   },
-
   chatName: {
     fontSize: 15,
     fontWeight: "800",
-    color: "#FFFFFF",
     flex: 1,
     letterSpacing: 0.6,
     textTransform: "capitalize",
   },
-  previewRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  chatPreview: {
-    fontSize: 13,
-    color: C.faint,
-    lineHeight: 18,
-    flex: 1,
-  },
-
-  chatMeta: {
-    alignItems: "flex-end",
-    gap: 6,
-  },
-
-  chatTime: {
-    fontSize: 11,
-    color: C.faint,
-  },
-
-  chatTimeMobile: {
-    display: "none" as any,
-  },
-
+  chatTime: { fontSize: 11 },
+  previewRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  chatPreview: { fontSize: 13, lineHeight: 18, flex: 1 },
+  chatMeta: { alignItems: "flex-end", gap: 6 },
+  chatTimeRight: { fontSize: 11 },
   unreadBadge: {
-    backgroundColor: C.purpleMid,
     borderRadius: 7,
     minWidth: 21,
     height: 19,
@@ -906,12 +1146,7 @@ export const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 5,
   },
-
-  unreadText: {
-    color: C.white,
-    fontSize: 10,
-    fontWeight: "700",
-  },
+  unreadText: { color: "#fff", fontSize: 10, fontWeight: "700" },
 
   fab: {
     position: "absolute",
@@ -920,11 +1155,9 @@ export const s = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 18,
-    backgroundColor: C.purpleMid,
     alignItems: "center",
     justifyContent: "center",
     elevation: 12,
-    shadowColor: C.purpleMid,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
     shadowRadius: 14,
@@ -932,15 +1165,11 @@ export const s = StyleSheet.create({
 
   bottomNav: {
     flexDirection: "row",
-    backgroundColor: C.navBg || C.card,
     borderTopWidth: 1,
-    borderTopColor: C.border,
     paddingBottom: 10,
     paddingTop: 8,
   },
-
-  navItem: { flex: 1, alignItems: "center", gap: 4, position: "relative" },
-
+  navItem: { flex: 1, alignItems: "center", gap: 4 },
   navIconWrap: {
     width: 46,
     height: 30,
@@ -948,15 +1177,5 @@ export const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  navIconWrapActive: { backgroundColor: "rgba(109,40,217,0.28)" },
-
-  navLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: C.faint,
-    letterSpacing: 0.2,
-  },
-
-  navLabelActive: { color: C.purpleGlow, fontWeight: "700" },
+  navLabel: { fontSize: 10, letterSpacing: 0.2 },
 });
