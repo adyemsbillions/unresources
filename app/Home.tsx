@@ -867,7 +867,8 @@ export const s = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     flex: 1,
-    letterSpacing: 0.3,
+    letterSpacing: 0.6,
+    textTransform: "capitalize",
   },
   previewRow: {
     flexDirection: "row",

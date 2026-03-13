@@ -9,6 +9,8 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   Platform,
   RefreshControl,
   ScrollView,
@@ -257,9 +259,10 @@ const ds = StyleSheet.create({
   text: {
     marginHorizontal: 12,
     fontSize: 11,
-    fontWeight: "600",
+    fontWeight: "700",
     letterSpacing: 0.8,
     color: C.faint,
+    textTransform: "uppercase",
   },
 });
 
@@ -337,8 +340,8 @@ export default function ChatRoom() {
       (rawId.startsWith("new_") ? rawId.replace("new_", "") : rawId),
   );
 
-  const chatName = params.name ?? "Chat";
-  const initials = params.initials ?? "?";
+  const chatName = (params.name ?? "Chat").toUpperCase();
+  const initials = (params.initials ?? "?").toUpperCase();
   const avatarColor = params.color ?? C.purpleMid;
   const isOnline = params.online === "1";
 
@@ -350,11 +353,22 @@ export default function ChatRoom() {
   const [currentUserId, setCurrentUserId] = useState("");
 
   const scrollRef = useRef<ScrollView>(null);
+  const hasLoadedInitially = useRef(false);
+  const isNearBottomRef = useRef(true);
+  const previousMessageCountRef = useRef(0);
 
   const scrollToEnd = (animated = true) => {
     setTimeout(() => {
       scrollRef.current?.scrollToEnd({ animated });
     }, 100);
+  };
+
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+    const distanceFromBottom =
+      contentSize.height - (contentOffset.y + layoutMeasurement.height);
+
+    isNearBottomRef.current = distanceFromBottom < 120;
   };
 
   useEffect(() => {
@@ -445,8 +459,19 @@ export default function ChatRoom() {
           });
         });
 
+        const previousCount = previousMessageCountRef.current;
+        const newCount = msgsWithDates.filter((m) => !m.dateSeparator).length;
+        const hasNewMessages = newCount > previousCount;
+
         setMessages(msgsWithDates);
-        scrollToEnd(false);
+        previousMessageCountRef.current = newCount;
+
+        if (!hasLoadedInitially.current) {
+          hasLoadedInitially.current = true;
+          scrollToEnd(false);
+        } else if (hasNewMessages && isNearBottomRef.current) {
+          scrollToEnd(true);
+        }
       } else {
         setError(data.message || "Failed to load messages");
       }
@@ -517,6 +542,7 @@ export default function ChatRoom() {
     });
 
     setInput("");
+    isNearBottomRef.current = true;
     scrollToEnd();
 
     try {
@@ -584,7 +610,7 @@ export default function ChatRoom() {
         style={[
           s.headerWrap,
           {
-            paddingTop: Platform.OS === "android" ? Math.max(insets.top, 8) : 0,
+            paddingTop: Platform.OS === "android" ? 2 : 0,
           },
         ]}
       >
@@ -608,7 +634,7 @@ export default function ChatRoom() {
               style={[s.headerSub, { color: isOnline ? C.online : C.faint }]}
               numberOfLines={1}
             >
-              {isOnline ? "Online now" : "Last seen recently"}
+              {isOnline ? "ONLINE NOW" : "LAST SEEN RECENTLY"}
             </Text>
           </View>
 
@@ -648,6 +674,9 @@ export default function ChatRoom() {
               tintColor={C.purpleGlow}
             />
           }
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          keyboardShouldPersistTaps="handled"
         >
           {messages.map((msg) => (
             <React.Fragment key={msg.id}>
@@ -714,6 +743,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
+    paddingTop: 2,
     paddingBottom: 10,
     gap: 10,
     minHeight: 62,
@@ -742,7 +772,7 @@ const s = StyleSheet.create({
 
   headerAvatarText: {
     color: C.white,
-    fontWeight: "700",
+    fontWeight: "800",
     fontSize: 15,
   },
 
@@ -766,14 +796,18 @@ const s = StyleSheet.create({
 
   headerName: {
     fontSize: 16,
-    fontWeight: "700",
-    color: C.white,
+    fontWeight: "900",
+    color: "#FFFFFF",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
 
   headerSub: {
-    fontSize: 12,
-    fontWeight: "500",
-    marginTop: 1,
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 2,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
 
   headerActions: {
