@@ -1,9 +1,7 @@
 /*
   File: app/Status.tsx
   Purpose: WhatsApp-like Status Screen with text + photo status + caption + pause on hold
-  Updated: Photo button now shows "Coming Soon" popup. 
-           Multiple stories now properly slide from one user's stories to the next user's stories 
-           (no premature closing after one story/user). Everything else (text status, progress, pause, my status, etc.) works perfectly.
+  Fix: Theme switching now works — static T replaced with live THEMES[themeMode] state
 */
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
@@ -26,25 +24,91 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path } from "react-native-svg";
-import { BottomNav, TopBar } from "./Home";
+import { BottomNav } from "./Home";
 
 const API_BASE = "https://unresources.cravii.ng/api";
-const T = {
-  bg: "#08080F",
-  bgDeep: "#000000",
-  card: "#0F0F1C",
-  border: "#1C1C30",
-  white: "#FFFFFF",
-  whiteSoft: "#E5E5F0",
-  whiteMuted: "#A0A0B8",
-  faint: "#4B4B6B",
-  purpleGlow: "#9B7EFF",
-  purpleMid: "#6B2ED9",
-  purpleFaint: "#2A1A4D",
-  online: "#22D3A0",
-  navBg: "#0A0A16",
-  statusBar: "light-content" as const,
+
+// ─── THEME SYSTEM ─────────────────────────────────────────────────────────────
+
+type ThemeMode = "dark" | "light" | "midnight" | "forest";
+
+const THEMES = {
+  dark: {
+    bg: "#08080F",
+    bgDeep: "#000000",
+    card: "#0F0F1C",
+    border: "#1C1C30",
+    white: "#FFFFFF",
+    whiteSoft: "#E5E5F0",
+    whiteMuted: "#A0A0B8",
+    faint: "#4B4B6B",
+    purpleGlow: "#9B7EFF",
+    purpleMid: "#6B2ED9",
+    purpleFaint: "#2A1A4D",
+    online: "#22D3A0",
+    navBg: "#0A0A16",
+    statusBar: "light-content" as const,
+  },
+  light: {
+    bg: "#F4F5FB",
+    bgDeep: "#ECEDF7",
+    card: "#FFFFFF",
+    border: "#E2E3F0",
+    white: "#1A1B2E",
+    whiteSoft: "#2D2F52",
+    whiteMuted: "#6B6E94",
+    faint: "#9B9EC0",
+    purpleGlow: "#6244E5",
+    purpleMid: "#5234C8",
+    purpleFaint: "rgba(98,68,229,0.1)",
+    online: "#16B98C",
+    navBg: "#FFFFFF",
+    statusBar: "dark-content" as const,
+  },
+  midnight: {
+    bg: "#060810",
+    bgDeep: "#030408",
+    card: "#0C0E1A",
+    border: "#141830",
+    white: "#E8EAFF",
+    whiteSoft: "#B0B4E0",
+    whiteMuted: "#7A7EA8",
+    faint: "#303460",
+    purpleGlow: "#7AAEFF",
+    purpleMid: "#3B78F0",
+    purpleFaint: "rgba(79,142,255,0.12)",
+    online: "#00E5B0",
+    navBg: "#070912",
+    statusBar: "light-content" as const,
+  },
+  forest: {
+    bg: "#0A120E",
+    bgDeep: "#060D09",
+    card: "#0F1A12",
+    border: "#182A1E",
+    white: "#E6F0E8",
+    whiteSoft: "#B8CEBE",
+    whiteMuted: "#7A9882",
+    faint: "#304038",
+    purpleGlow: "#4EEEA0",
+    purpleMid: "#22B86A",
+    purpleFaint: "rgba(45,216,130,0.12)",
+    online: "#FFE066",
+    navBg: "#0B140F",
+    statusBar: "light-content" as const,
+  },
 };
+
+type Theme = (typeof THEMES)["dark"];
+
+const THEME_LABELS: Record<ThemeMode, { icon: string; label: string }> = {
+  dark: { icon: "◐", label: "Dark" },
+  light: { icon: "○", label: "Light" },
+  midnight: { icon: "●", label: "Night" },
+  forest: { icon: "◈", label: "Forest" },
+};
+
+// ─── TYPES ───────────────────────────────────────────────────────────────────
 
 type Story = {
   id: number;
@@ -66,6 +130,27 @@ type StatusUser = {
   seen: boolean;
   stories: Story[];
 };
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+
+function getInitials(name: string) {
+  if (!name) return "U";
+  const parts = name.trim().split(" ").filter(Boolean);
+  if (parts.length > 1) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function timeAgo(dateString: string) {
+  const now = new Date().getTime();
+  const then = new Date(dateString).getTime();
+  const diff = Math.max(0, Math.floor((now - then) / 1000));
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+// ─── ICONS ───────────────────────────────────────────────────────────────────
 
 function IconPlus({
   color = "#fff",
@@ -98,13 +183,7 @@ function IconPlus({
   );
 }
 
-function IconCamera({
-  color = T.whiteMuted,
-  size = 18,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconCamera({ color, size = 18 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -119,13 +198,7 @@ function IconCamera({
   );
 }
 
-function IconText({
-  color = T.whiteMuted,
-  size = 18,
-}: {
-  color?: string;
-  size?: number;
-}) {
+function IconText({ color, size = 18 }: { color: string; size?: number }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -138,29 +211,198 @@ function IconText({
   );
 }
 
-function getInitials(name: string) {
-  if (!name) return "U";
-  const parts = name.trim().split(" ").filter(Boolean);
-  if (parts.length > 1) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+function IconPalette({ color, size = 19 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2v-.5c0-.55-.22-1.05-.59-1.41-.36-.36-.59-.86-.59-1.41 0-1.1.9-2 2-2h2c3.31 0 6-2.69 6-6 0-4.96-4.48-9-10-9z"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+      />
+      <Circle cx="8.5" cy="10.5" r="1" fill={color} />
+      <Circle cx="12" cy="7.5" r="1" fill={color} />
+      <Circle cx="15.5" cy="10.5" r="1" fill={color} />
+    </Svg>
+  );
 }
 
-function timeAgo(dateString: string) {
-  const now = new Date().getTime();
-  const then = new Date(dateString).getTime();
-  const diff = Math.max(0, Math.floor((now - then) / 1000));
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+function IconBell({ color, size = 19 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M13.73 21a2 2 0 0 1-3.46 0"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
 }
+
+// ─── THEME SWITCHER ──────────────────────────────────────────────────────────
+
+function ThemeSwitcher({
+  current,
+  onChange,
+  T,
+}: {
+  current: ThemeMode;
+  onChange: (t: ThemeMode) => void;
+  T: Theme;
+}) {
+  const [open, setOpen] = useState(false);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  const toggle = () => {
+    const toValue = open ? 0 : 1;
+    setOpen(!open);
+    Animated.spring(anim, {
+      toValue,
+      useNativeDriver: true,
+      tension: 80,
+      friction: 10,
+    }).start();
+  };
+
+  return (
+    <View style={{ position: "relative" }}>
+      <TouchableOpacity
+        style={[
+          s.iconBtn,
+          {
+            backgroundColor: T.card,
+            borderColor: open ? T.purpleMid : T.border,
+          },
+        ]}
+        onPress={toggle}
+        activeOpacity={0.75}
+      >
+        <IconPalette color={open ? T.purpleGlow : T.whiteMuted} size={19} />
+      </TouchableOpacity>
+
+      {open && (
+        <Animated.View
+          style={[
+            s.themeDropdown,
+            {
+              backgroundColor: T.card,
+              borderColor: T.border,
+              opacity: anim,
+              transform: [
+                {
+                  scale: anim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.85, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          {(Object.keys(THEME_LABELS) as ThemeMode[]).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[
+                s.themeOption,
+                current === t && { backgroundColor: T.purpleFaint },
+              ]}
+              onPress={() => {
+                onChange(t);
+                setOpen(false);
+              }}
+            >
+              <Text style={{ fontSize: 16, marginRight: 8 }}>
+                {THEME_LABELS[t].icon}
+              </Text>
+              <Text
+                style={[
+                  s.themeLabel,
+                  {
+                    color: current === t ? T.purpleGlow : T.whiteMuted,
+                    fontWeight: current === t ? "700" : "500",
+                  },
+                ]}
+              >
+                {THEME_LABELS[t].label}
+              </Text>
+              {current === t && (
+                <View style={[s.themeDot, { backgroundColor: T.purpleGlow }]} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
+// ─── TOP BAR ─────────────────────────────────────────────────────────────────
+
+function TopBar({
+  username,
+  theme,
+  onThemeChange,
+  T,
+}: {
+  username?: string;
+  theme: ThemeMode;
+  onThemeChange: (t: ThemeMode) => void;
+  T: Theme;
+}) {
+  return (
+    <View style={[s.topBar, { borderBottomColor: T.border }]}>
+      <View style={{ flex: 1, paddingRight: 10 }}>
+        <Text style={[s.wordmark, { color: T.white }]}>
+          {"UNIMAID "}
+          <Text style={{ color: T.purpleGlow }}>RESOURCES</Text>
+        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={[s.wordmarkSub, { color: T.faint }]}>
+            University of Maiduguri
+          </Text>
+          {username ? (
+            <>
+              <Text style={{ color: T.faint, fontSize: 11 }}>·</Text>
+              <Text style={[s.usernameTag, { color: T.white }]}>
+                @{username}
+              </Text>
+            </>
+          ) : null}
+        </View>
+      </View>
+      <View style={{ flexDirection: "row", gap: 8 }}>
+        <ThemeSwitcher current={theme} onChange={onThemeChange} T={T} />
+        <TouchableOpacity
+          style={[
+            s.iconBtn,
+            { backgroundColor: T.card, borderColor: T.border },
+          ]}
+        >
+          <IconBell color={T.whiteMuted} size={19} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// ─── STATUS ROW ──────────────────────────────────────────────────────────────
 
 function StatusRow({
   status,
   onPress,
+  T,
 }: {
   status: StatusUser;
   onPress: () => void;
+  T: Theme;
 }) {
   return (
     <TouchableOpacity
@@ -168,32 +410,52 @@ function StatusRow({
       activeOpacity={0.75}
       onPress={onPress}
     >
-      <View style={[s.ring, status.seen ? s.ringSeen : s.ringUnseen]}>
+      <View
+        style={[
+          s.ring,
+          status.seen
+            ? { backgroundColor: "rgba(255,255,255,0.18)" }
+            : { backgroundColor: T.purpleMid },
+        ]}
+      >
         <View
           style={[
             s.ringInner,
-            { backgroundColor: status.color || T.purpleMid },
+            {
+              backgroundColor: status.color || T.purpleMid,
+              borderColor: T.bg,
+            },
           ]}
         >
-          <Text style={s.ringText}>
+          <Text style={[s.ringText, { color: T.white }]}>
             {status.initials || getInitials(status.name)}
           </Text>
         </View>
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={s.statusName}>{status.name}</Text>
-        <Text style={s.statusTime}>
+        <Text style={[s.statusName, { color: T.whiteSoft }]}>
+          {status.name}
+        </Text>
+        <Text style={[s.statusTime, { color: T.faint }]}>
           {status.stories.length > 0
             ? timeAgo(status.stories[0].created_at)
             : "No update"}
         </Text>
       </View>
-      {!status.seen ? <View style={s.unseenDot} /> : null}
+      {!status.seen ? (
+        <View style={[s.unseenDot, { backgroundColor: T.purpleGlow }]} />
+      ) : null}
     </TouchableOpacity>
   );
 }
 
+// ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
+
 export default function Status() {
+  // themeMode drives T — changing it instantly re-renders everything
+  const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
+  const T: Theme = THEMES[themeMode];
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [statuses, setStatuses] = useState<StatusUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -203,9 +465,25 @@ export default function Status() {
   const [statusIndex, setStatusIndex] = useState(0);
   const [storyIndex, setStoryIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+
   const progress = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const progressValueRef = useRef(0);
+
+  // Load saved theme on mount
+  useEffect(() => {
+    SecureStore.getItemAsync("theme")
+      .then((saved) => {
+        if (saved && THEMES[saved as ThemeMode])
+          setThemeMode(saved as ThemeMode);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleThemeChange = (t: ThemeMode) => {
+    setThemeMode(t); // instant re-render
+    SecureStore.setItemAsync("theme", t).catch(() => {});
+  };
 
   useEffect(() => {
     const sub = progress.addListener(({ value }) => {
@@ -223,9 +501,7 @@ export default function Status() {
       );
       const text = await res.text();
       const data = JSON.parse(text);
-      if (data.status === "success") {
-        setStatuses(data.statuses || []);
-      }
+      if (data.status === "success") setStatuses(data.statuses || []);
     } catch (err) {
       console.log("Status load error:", err);
     }
@@ -238,9 +514,7 @@ export default function Status() {
         if (stored) {
           const user = JSON.parse(stored);
           setCurrentUser(user);
-          if (user?.id) {
-            await loadStatuses(user.id);
-          }
+          if (user?.id) await loadStatuses(user.id);
         }
       } catch (err) {
         console.log(err);
@@ -251,9 +525,7 @@ export default function Status() {
     init();
   }, []);
 
-  const resetComposer = () => {
-    setStatusText("");
-  };
+  const resetComposer = () => setStatusText("");
 
   const addStatus = async () => {
     if (!currentUser?.id) {
@@ -285,7 +557,7 @@ export default function Status() {
       } else {
         Alert.alert("Error", data.message || "Failed to add status");
       }
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Network error");
     }
   };
@@ -296,10 +568,7 @@ export default function Status() {
       await fetch(`${API_BASE}/view_status.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status_id: storyId,
-          viewer_id: currentUser.id,
-        }),
+        body: JSON.stringify({ status_id: storyId, viewer_id: currentUser.id }),
       });
     } catch (err) {
       console.log("View status error:", err);
@@ -315,18 +584,14 @@ export default function Status() {
       useNativeDriver: false,
     });
     animationRef.current.start(({ finished }) => {
-      if (finished && !isPaused) {
-        nextStory();
-      }
+      if (finished && !isPaused) nextStory();
     });
   };
 
   const pauseProgress = () => {
     if (!viewerVisible) return;
     setIsPaused(true);
-    if (animationRef.current) {
-      animationRef.current.stop();
-    }
+    if (animationRef.current) animationRef.current.stop();
   };
 
   const resumeProgress = () => {
@@ -341,52 +606,36 @@ export default function Status() {
     setViewerVisible(true);
     setIsPaused(false);
     const firstStory = statuses[index]?.stories?.[0];
-    if (firstStory?.id) {
-      await markViewed(firstStory.id);
-    }
+    if (firstStory?.id) await markViewed(firstStory.id);
     startProgress(0);
   };
 
   const closeViewer = () => {
     setViewerVisible(false);
     setIsPaused(false);
-    if (animationRef.current) {
-      animationRef.current.stop();
-    }
+    if (animationRef.current) animationRef.current.stop();
     progress.setValue(0);
   };
 
   const nextStory = async () => {
     const currentStatus = statuses[statusIndex];
     if (!currentStatus) return;
-
-    // Slide to next story of SAME user (multiple stories supported)
     if (storyIndex < currentStatus.stories.length - 1) {
       const newIndex = storyIndex + 1;
       setStoryIndex(newIndex);
       const story = currentStatus.stories[newIndex];
-      if (story?.id) {
-        await markViewed(story.id);
-      }
+      if (story?.id) await markViewed(story.id);
       startProgress(0);
-    }
-    // Slide to next user's stories
-    else if (statusIndex < statuses.length - 1) {
+    } else if (statusIndex < statuses.length - 1) {
       const nextStatusIndex = statusIndex + 1;
       setStatusIndex(nextStatusIndex);
       setStoryIndex(0);
       const story = statuses[nextStatusIndex]?.stories?.[0];
-      if (story?.id) {
-        await markViewed(story.id);
-      }
+      if (story?.id) await markViewed(story.id);
       startProgress(0);
-    }
-    // All stories done → close
-    else {
+    } else {
       closeViewer();
-      if (currentUser?.id) {
-        await loadStatuses(currentUser.id);
-      }
+      if (currentUser?.id) await loadStatuses(currentUser.id);
     }
   };
 
@@ -397,9 +646,8 @@ export default function Status() {
     } else if (statusIndex > 0) {
       const prevStatusIndex = statusIndex - 1;
       const prevStatus = statuses[prevStatusIndex];
-      const lastStoryIndex = prevStatus.stories.length - 1;
       setStatusIndex(prevStatusIndex);
-      setStoryIndex(lastStoryIndex);
+      setStoryIndex(prevStatus.stories.length - 1);
       startProgress(0);
     }
   };
@@ -415,7 +663,6 @@ export default function Status() {
 
   const currentStatus = statuses[statusIndex];
   const currentStory = currentStatus?.stories?.[storyIndex];
-
   const myLatestTime =
     myStatuses.length > 0 && myStatuses[0].stories.length > 0
       ? timeAgo(myStatuses[0].stories[0].created_at)
@@ -423,8 +670,8 @@ export default function Status() {
 
   if (loading) {
     return (
-      <SafeAreaView style={s.safe}>
-        <StatusBar barStyle="light-content" backgroundColor={T.bg} />
+      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+        <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
         <ActivityIndicator
           size="large"
           color={T.purpleGlow}
@@ -435,13 +682,14 @@ export default function Status() {
   }
 
   return (
-    <SafeAreaView style={s.safe}>
-      <StatusBar barStyle="light-content" backgroundColor={T.bg} />
+    <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+      <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
+
       <View style={{ paddingTop: Platform.OS === "android" ? 2 : 0 }}>
         <TopBar
           username={currentUser?.username || ""}
-          theme="dark"
-          onThemeChange={() => {}}
+          theme={themeMode}
+          onThemeChange={handleThemeChange}
           T={T}
         />
       </View>
@@ -450,8 +698,15 @@ export default function Status() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 90 }}
       >
+        {/* My Status card */}
         <TouchableOpacity
-          style={s.myCard}
+          style={[
+            s.myCard,
+            {
+              backgroundColor: T.purpleFaint,
+              borderColor: `${T.purpleMid}66`,
+            },
+          ]}
           activeOpacity={0.85}
           onPress={() => {
             if (myStatuses.length > 0) {
@@ -466,8 +721,8 @@ export default function Status() {
           }}
         >
           <View style={s.myAvatarWrap}>
-            <View style={s.myAvatar}>
-              <Text style={s.myAvatarText}>
+            <View style={[s.myAvatar, { backgroundColor: T.purpleMid }]}>
+              <Text style={[s.myAvatarText, { color: T.white }]}>
                 {currentUser?.initials ||
                   getInitials(
                     currentUser?.name || currentUser?.username || "U",
@@ -475,7 +730,10 @@ export default function Status() {
               </Text>
             </View>
             <TouchableOpacity
-              style={s.addBtn}
+              style={[
+                s.addBtn,
+                { backgroundColor: T.purpleGlow, borderColor: T.bg },
+              ]}
               onPress={() => {
                 resetComposer();
                 setAddModalVisible(true);
@@ -485,8 +743,8 @@ export default function Status() {
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={s.myName}>My Status</Text>
-            <Text style={s.mySub}>
+            <Text style={[s.myName, { color: T.white }]}>My Status</Text>
+            <Text style={[s.mySub, { color: T.faint }]}>
               {myStatuses.length > 0
                 ? `Tap to view • ${myLatestTime}`
                 : "Tap + to add a text update"}
@@ -494,43 +752,57 @@ export default function Status() {
           </View>
         </TouchableOpacity>
 
+        {/* Action row */}
         <View style={s.actionRow}>
           <TouchableOpacity
-            style={s.actionBtn}
+            style={[
+              s.actionBtn,
+              { backgroundColor: T.card, borderColor: T.border },
+            ]}
             onPress={() => {
               resetComposer();
               setAddModalVisible(true);
             }}
           >
-            <View style={s.actionIcon}>
-              <IconText />
+            <View
+              style={[s.actionIcon, { backgroundColor: `${T.purpleMid}33` }]}
+            >
+              <IconText color={T.whiteMuted} />
             </View>
-            <Text style={s.actionLabel}>Text Status</Text>
+            <Text style={[s.actionLabel, { color: T.whiteSoft }]}>
+              Text Status
+            </Text>
           </TouchableOpacity>
 
-          {/* PHOTO BUTTON → COMING SOON POPUP */}
           <TouchableOpacity
-            style={s.actionBtn}
-            onPress={() => {
+            style={[
+              s.actionBtn,
+              { backgroundColor: T.card, borderColor: T.border },
+            ]}
+            onPress={() =>
               Alert.alert(
                 "Coming Soon 👀",
                 "Photo status feature is coming very soon!\n\nYou can still post awesome text statuses right now.",
                 [{ text: "OK", style: "default" }],
-              );
-            }}
+              )
+            }
           >
-            <View style={s.actionIcon}>
-              <IconCamera />
+            <View
+              style={[s.actionIcon, { backgroundColor: `${T.purpleMid}33` }]}
+            >
+              <IconCamera color={T.whiteMuted} />
             </View>
-            <Text style={s.actionLabel}>Photo</Text>
+            <Text style={[s.actionLabel, { color: T.whiteSoft }]}>Photo</Text>
           </TouchableOpacity>
         </View>
 
-        <View style={s.divider} />
+        <View style={[s.divider, { backgroundColor: T.border }]} />
 
         {recent.length > 0 ? (
           <>
-            <Text style={s.sectionLabel}>RECENT UPDATES</Text>
+            <Text style={[s.sectionLabel, { color: T.faint }]}>
+              RECENT UPDATES
+            </Text>
             {recent.map((st) => {
               const realIndex = statuses.findIndex(
                 (x) => x.user_id === st.user_id,
@@ -540,6 +812,7 @@ export default function Status() {
                   key={String(st.user_id)}
                   status={st}
                   onPress={() => openViewer(realIndex)}
+                  T={T}
                 />
               );
             })}
@@ -548,8 +821,8 @@ export default function Status() {
 
         {viewed.length > 0 ? (
           <>
-            <View style={s.divider} />
-            <Text style={s.sectionLabel}>VIEWED</Text>
+            <View style={[s.divider, { backgroundColor: T.border }]} />
+            <Text style={[s.sectionLabel, { color: T.faint }]}>VIEWED</Text>
             {viewed.map((st) => {
               const realIndex = statuses.findIndex(
                 (x) => x.user_id === st.user_id,
@@ -559,6 +832,7 @@ export default function Status() {
                   key={String(st.user_id)}
                   status={st}
                   onPress={() => openViewer(realIndex)}
+                  T={T}
                 />
               );
             })}
@@ -566,11 +840,13 @@ export default function Status() {
         ) : null}
 
         {recent.length === 0 && viewed.length === 0 ? (
-          <Text style={s.emptyText}>No status updates yet</Text>
+          <Text style={[s.emptyText, { color: T.faint }]}>
+            No status updates yet
+          </Text>
         ) : null}
       </ScrollView>
 
-      {/* ADD TEXT STATUS MODAL (Photo removed - coming soon) */}
+      {/* Add text status modal */}
       <Modal
         transparent
         visible={addModalVisible}
@@ -588,11 +864,24 @@ export default function Status() {
         >
           <View style={s.modalOverlay}>
             <TouchableWithoutFeedback>
-              <View style={s.modalCard}>
-                <Text style={s.modalTitle}>Add Status</Text>
-
+              <View
+                style={[
+                  s.modalCard,
+                  { backgroundColor: T.card, borderColor: T.border },
+                ]}
+              >
+                <Text style={[s.modalTitle, { color: T.white }]}>
+                  Add Status
+                </Text>
                 <TextInput
-                  style={s.statusInput}
+                  style={[
+                    s.statusInput,
+                    {
+                      backgroundColor: T.bg,
+                      borderColor: T.border,
+                      color: T.white,
+                    },
+                  ]}
                   placeholder="What's on your mind?"
                   placeholderTextColor={T.faint}
                   value={statusText}
@@ -600,18 +889,22 @@ export default function Status() {
                   multiline
                   maxLength={300}
                 />
-
                 <View style={s.modalButtons}>
                   <TouchableOpacity
-                    style={s.modalCancel}
+                    style={[s.modalCancel, { borderColor: T.border }]}
                     onPress={() => {
                       setAddModalVisible(false);
                       resetComposer();
                     }}
                   >
-                    <Text style={s.modalCancelText}>Cancel</Text>
+                    <Text style={[s.modalCancelText, { color: T.white }]}>
+                      Cancel
+                    </Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={s.modalPost} onPress={addStatus}>
+                  <TouchableOpacity
+                    style={[s.modalPost, { backgroundColor: T.purpleMid }]}
+                    onPress={addStatus}
+                  >
                     <Text style={s.modalPostText}>Post Status</Text>
                   </TouchableOpacity>
                 </View>
@@ -621,7 +914,7 @@ export default function Status() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* STATUS VIEWER - now properly slides between users */}
+      {/* Status viewer (full screen — no theme needed, always dark) */}
       <Modal
         visible={viewerVisible}
         animationType="fade"
@@ -634,7 +927,7 @@ export default function Status() {
               backgroundColor:
                 currentStory?.type === "image"
                   ? "#000"
-                  : currentStory?.background_color || T.bgDeep,
+                  : currentStory?.background_color || THEMES.dark.bgDeep,
             },
           ]}
         >
@@ -718,40 +1011,80 @@ export default function Status() {
   );
 }
 
+// ─── STYLES (layout only — zero hardcoded colors) ────────────────────────────
+
 const s = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: T.bg,
+  safe: { flex: 1 },
+
+  topBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 2,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
   },
+  wordmark: { fontSize: 21, fontWeight: "900", letterSpacing: 0.6 },
+  wordmarkSub: { fontSize: 11, marginTop: 2, letterSpacing: 0.4 },
+  usernameTag: {
+    fontSize: 12,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    marginTop: 2,
+  },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  themeDropdown: {
+    position: "absolute",
+    top: 48,
+    right: 0,
+    width: 150,
+    borderRadius: 14,
+    borderWidth: 1,
+    zIndex: 999,
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  themeOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  themeLabel: { fontSize: 14, flex: 1 },
+  themeDot: { width: 6, height: 6, borderRadius: 3 },
+
   myCard: {
     margin: 20,
     padding: 16,
     borderRadius: 20,
-    backgroundColor: "rgba(109,40,217,0.15)",
     borderWidth: 1,
-    borderColor: "rgba(109,40,217,0.3)",
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
   },
-  myAvatarWrap: {
-    position: "relative",
-  },
+  myAvatarWrap: { position: "relative" },
   myAvatar: {
     width: 58,
     height: 58,
     borderRadius: 18,
-    backgroundColor: T.purpleMid,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
     borderColor: "rgba(139,92,246,0.4)",
   },
-  myAvatarText: {
-    color: T.white,
-    fontSize: 22,
-    fontWeight: "800",
-  },
+  myAvatarText: { fontSize: 22, fontWeight: "800" },
   addBtn: {
     position: "absolute",
     bottom: -4,
@@ -759,22 +1092,13 @@ const s = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: T.purpleGlow,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: T.bg,
   },
-  myName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: T.white,
-  },
-  mySub: {
-    fontSize: 12,
-    color: T.faint,
-    marginTop: 2,
-  },
+  myName: { fontSize: 15, fontWeight: "700" },
+  mySub: { fontSize: 12, marginTop: 2 },
+
   actionRow: {
     flexDirection: "row",
     paddingHorizontal: 20,
@@ -786,9 +1110,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: T.card,
     borderWidth: 1,
-    borderColor: T.border,
     borderRadius: 14,
     padding: 14,
   },
@@ -796,30 +1118,22 @@ const s = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: "rgba(109,40,217,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },
-  actionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: T.whiteSoft,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: T.border,
-    marginHorizontal: 20,
-    marginVertical: 10,
-  },
+  actionLabel: { fontSize: 14, fontWeight: "600" },
+
+  divider: { height: 1, marginHorizontal: 20, marginVertical: 10 },
+
   sectionLabel: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.4,
-    color: T.faint,
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 6,
   },
+
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -827,53 +1141,21 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     gap: 14,
   },
-  ring: {
-    width: 56,
-    height: 56,
-    borderRadius: 17,
-    padding: 2.5,
-  },
-  ringUnseen: {
-    backgroundColor: T.purpleMid,
-  },
-  ringSeen: {
-    backgroundColor: "rgba(255,255,255,0.18)",
-  },
+  ring: { width: 56, height: 56, borderRadius: 17, padding: 2.5 },
   ringInner: {
     flex: 1,
     borderRadius: 14,
     borderWidth: 2.5,
-    borderColor: T.bg,
     alignItems: "center",
     justifyContent: "center",
   },
-  ringText: {
-    color: T.white,
-    fontWeight: "700",
-    fontSize: 14,
-  },
-  statusName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: T.whiteSoft,
-  },
-  statusTime: {
-    fontSize: 12,
-    color: T.faint,
-    marginTop: 2,
-  },
-  unseenDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: T.purpleGlow,
-  },
-  emptyText: {
-    color: T.faint,
-    textAlign: "center",
-    marginTop: 40,
-    fontSize: 14,
-  },
+  ringText: { fontWeight: "700", fontSize: 14 },
+  statusName: { fontSize: 15, fontWeight: "700" },
+  statusTime: { fontSize: 12, marginTop: 2 },
+  unseenDot: { width: 10, height: 10, borderRadius: 5 },
+
+  emptyText: { textAlign: "center", marginTop: 40, fontSize: 14 },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.72)",
@@ -881,28 +1163,13 @@ const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 20,
   },
-  modalCard: {
-    width: "100%",
-    backgroundColor: T.card,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: T.border,
-    padding: 18,
-  },
-  modalTitle: {
-    color: T.white,
-    fontSize: 18,
-    fontWeight: "800",
-    marginBottom: 14,
-  },
+  modalCard: { width: "100%", borderRadius: 20, borderWidth: 1, padding: 18 },
+  modalTitle: { fontSize: 18, fontWeight: "800", marginBottom: 14 },
   statusInput: {
     minHeight: 120,
-    backgroundColor: T.bg,
     borderWidth: 1,
-    borderColor: T.border,
     borderRadius: 14,
     padding: 14,
-    color: T.white,
     textAlignVertical: "top",
     fontSize: 15,
   },
@@ -917,25 +1184,13 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: T.border,
   },
-  modalCancelText: {
-    color: T.white,
-    fontWeight: "700",
-  },
-  modalPost: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: T.purpleMid,
-  },
-  modalPostText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-  viewer: {
-    flex: 1,
-  },
+  modalCancelText: { fontWeight: "700" },
+  modalPost: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  modalPostText: { color: "#fff", fontWeight: "800" },
+
+  // Viewer (always dark — full screen immersive)
+  viewer: { flex: 1 },
   progressWrap: {
     position: "absolute",
     top: 50,
@@ -952,15 +1207,8 @@ const s = StyleSheet.create({
     borderRadius: 10,
     overflow: "hidden",
   },
-  progressFillFull: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#fff",
-  },
-  progressFillAnimated: {
-    height: "100%",
-    backgroundColor: "#fff",
-  },
+  progressFillFull: { width: "100%", height: "100%", backgroundColor: "#fff" },
+  progressFillAnimated: { height: "100%", backgroundColor: "#fff" },
   viewerHeader: {
     position: "absolute",
     top: 62,
@@ -968,16 +1216,8 @@ const s = StyleSheet.create({
     right: 18,
     zIndex: 11,
   },
-  viewerName: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 15,
-  },
-  viewerTime: {
-    color: "rgba(255,255,255,0.72)",
-    fontSize: 12,
-    marginTop: 2,
-  },
+  viewerName: { color: "#fff", fontWeight: "800", fontSize: 15 },
+  viewerTime: { color: "rgba(255,255,255,0.72)", fontSize: 12, marginTop: 2 },
   viewerCenter: {
     flex: 1,
     alignItems: "center",
@@ -991,10 +1231,7 @@ const s = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700",
   },
-  viewerImage: {
-    width: "100%",
-    height: "78%",
-  },
+  viewerImage: { width: "100%", height: "78%" },
   captionWrap: {
     position: "absolute",
     left: 16,
@@ -1028,9 +1265,5 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  closeText: {
-    color: "#fff",
-    fontSize: 28,
-    lineHeight: 28,
-  },
+  closeText: { color: "#fff", fontSize: 28, lineHeight: 28 },
 });
