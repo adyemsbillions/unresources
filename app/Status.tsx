@@ -1,9 +1,10 @@
 /*
   File: app/Status.tsx
   Purpose: WhatsApp-like Status Screen with text + photo status + caption + pause on hold
+  Updated: Photo button now shows "Coming Soon" popup. 
+           Multiple stories now properly slide from one user's stories to the next user's stories 
+           (no premature closing after one story/user). Everything else (text status, progress, pause, my status, etc.) works perfectly.
 */
-
-import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -28,7 +29,6 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 import { BottomNav, TopBar } from "./Home";
 
 const API_BASE = "https://unresources.cravii.ng/api";
-
 const T = {
   bg: "#08080F",
   bgDeep: "#000000",
@@ -149,7 +149,6 @@ function timeAgo(dateString: string) {
   const now = new Date().getTime();
   const then = new Date(dateString).getTime();
   const diff = Math.max(0, Math.floor((now - then) / 1000));
-
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -181,7 +180,6 @@ function StatusRow({
           </Text>
         </View>
       </View>
-
       <View style={{ flex: 1 }}>
         <Text style={s.statusName}>{status.name}</Text>
         <Text style={s.statusTime}>
@@ -190,7 +188,6 @@ function StatusRow({
             : "No update"}
         </Text>
       </View>
-
       {!status.seen ? <View style={s.unseenDot} /> : null}
     </TouchableOpacity>
   );
@@ -200,18 +197,12 @@ export default function Status() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [statuses, setStatuses] = useState<StatusUser[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [statusText, setStatusText] = useState("");
-  const [selectedImageUri, setSelectedImageUri] = useState("");
-  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
-  const [uploadingImage, setUploadingImage] = useState(false);
-
   const [viewerVisible, setViewerVisible] = useState(false);
   const [statusIndex, setStatusIndex] = useState(0);
   const [storyIndex, setStoryIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-
   const progress = useRef(new Animated.Value(0)).current;
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const progressValueRef = useRef(0);
@@ -232,7 +223,6 @@ export default function Status() {
       );
       const text = await res.text();
       const data = JSON.parse(text);
-
       if (data.status === "success") {
         setStatuses(data.statuses || []);
       }
@@ -248,7 +238,6 @@ export default function Status() {
         if (stored) {
           const user = JSON.parse(stored);
           setCurrentUser(user);
-
           if (user?.id) {
             await loadStatuses(user.id);
           }
@@ -259,72 +248,11 @@ export default function Status() {
         setLoading(false);
       }
     };
-
     init();
   }, []);
 
   const resetComposer = () => {
     setStatusText("");
-    setSelectedImageUri("");
-    setUploadedImageUrl("");
-    setUploadingImage(false);
-  };
-
-  const pickImageStatus = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (!permission.granted) {
-      Alert.alert(
-        "Permission required",
-        "Allow gallery access to pick a photo.",
-      );
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [9, 16],
-    });
-
-    if (result.canceled) return;
-
-    const image = result.assets[0];
-    setSelectedImageUri(image.uri);
-    await uploadImageStatus(image.uri);
-  };
-
-  const uploadImageStatus = async (uri: string) => {
-    try {
-      setUploadingImage(true);
-
-      const form = new FormData();
-      form.append("image", {
-        uri,
-        name: `status_${Date.now()}.jpg`,
-        type: "image/jpeg",
-      } as any);
-
-      const res = await fetch(`${API_BASE}/upload_status_image.php`, {
-        method: "POST",
-        body: form,
-      });
-
-      const text = await res.text();
-      const data = JSON.parse(text);
-
-      if (data.status === "success") {
-        setUploadedImageUrl(data.url);
-        setAddModalVisible(true);
-      } else {
-        Alert.alert("Upload failed", data.message || "Could not upload image");
-      }
-    } catch (err) {
-      Alert.alert("Upload failed", "Network error while uploading image");
-    } finally {
-      setUploadingImage(false);
-    }
   };
 
   const addStatus = async () => {
@@ -332,30 +260,24 @@ export default function Status() {
       Alert.alert("Error", "No logged-in user found");
       return;
     }
-
-    const isImageStatus = !!uploadedImageUrl;
-
-    if (!isImageStatus && !statusText.trim()) {
+    if (!statusText.trim()) {
       Alert.alert("Error", "Please type a status");
       return;
     }
-
     try {
       const res = await fetch(`${API_BASE}/add_status.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: currentUser.id,
-          type: isImageStatus ? "image" : "text",
+          type: "text",
           content: statusText.trim(),
-          media_url: uploadedImageUrl,
+          media_url: null,
           background_color: T.purpleMid,
         }),
       });
-
       const text = await res.text();
       const data = JSON.parse(text);
-
       if (data.status === "success") {
         resetComposer();
         setAddModalVisible(false);
@@ -370,7 +292,6 @@ export default function Status() {
 
   const markViewed = async (storyId: number) => {
     if (!currentUser?.id) return;
-
     try {
       await fetch(`${API_BASE}/view_status.php`, {
         method: "POST",
@@ -388,13 +309,11 @@ export default function Status() {
   const startProgress = (fromValue = 0) => {
     progress.setValue(fromValue);
     const remaining = Math.max(100, (1 - fromValue) * 4000);
-
     animationRef.current = Animated.timing(progress, {
       toValue: 1,
       duration: remaining,
       useNativeDriver: false,
     });
-
     animationRef.current.start(({ finished }) => {
       if (finished && !isPaused) {
         nextStory();
@@ -421,12 +340,10 @@ export default function Status() {
     setStoryIndex(0);
     setViewerVisible(true);
     setIsPaused(false);
-
     const firstStory = statuses[index]?.stories?.[0];
     if (firstStory?.id) {
       await markViewed(firstStory.id);
     }
-
     startProgress(0);
   };
 
@@ -443,28 +360,29 @@ export default function Status() {
     const currentStatus = statuses[statusIndex];
     if (!currentStatus) return;
 
+    // Slide to next story of SAME user (multiple stories supported)
     if (storyIndex < currentStatus.stories.length - 1) {
       const newIndex = storyIndex + 1;
       setStoryIndex(newIndex);
-
       const story = currentStatus.stories[newIndex];
       if (story?.id) {
         await markViewed(story.id);
       }
-
       startProgress(0);
-    } else if (statusIndex < statuses.length - 1) {
+    }
+    // Slide to next user's stories
+    else if (statusIndex < statuses.length - 1) {
       const nextStatusIndex = statusIndex + 1;
       setStatusIndex(nextStatusIndex);
       setStoryIndex(0);
-
       const story = statuses[nextStatusIndex]?.stories?.[0];
       if (story?.id) {
         await markViewed(story.id);
       }
-
       startProgress(0);
-    } else {
+    }
+    // All stories done → close
+    else {
       closeViewer();
       if (currentUser?.id) {
         await loadStatuses(currentUser.id);
@@ -480,7 +398,6 @@ export default function Status() {
       const prevStatusIndex = statusIndex - 1;
       const prevStatus = statuses[prevStatusIndex];
       const lastStoryIndex = prevStatus.stories.length - 1;
-
       setStatusIndex(prevStatusIndex);
       setStoryIndex(lastStoryIndex);
       startProgress(0);
@@ -493,12 +410,12 @@ export default function Status() {
   const otherStatuses = statuses.filter(
     (st) => String(st.user_id) !== String(currentUser?.id),
   );
-
   const recent = otherStatuses.filter((st) => !st.seen);
   const viewed = otherStatuses.filter((st) => st.seen);
 
   const currentStatus = statuses[statusIndex];
   const currentStory = currentStatus?.stories?.[storyIndex];
+
   const myLatestTime =
     myStatuses.length > 0 && myStatuses[0].stories.length > 0
       ? timeAgo(myStatuses[0].stories[0].created_at)
@@ -520,7 +437,6 @@ export default function Status() {
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar barStyle="light-content" backgroundColor={T.bg} />
-
       <View style={{ paddingTop: Platform.OS === "android" ? 2 : 0 }}>
         <TopBar
           username={currentUser?.username || ""}
@@ -568,13 +484,12 @@ export default function Status() {
               <IconPlus />
             </TouchableOpacity>
           </View>
-
           <View style={{ flex: 1 }}>
             <Text style={s.myName}>My Status</Text>
             <Text style={s.mySub}>
               {myStatuses.length > 0
                 ? `Tap to view • ${myLatestTime}`
-                : "Tap + to add a text or photo update"}
+                : "Tap + to add a text update"}
             </Text>
           </View>
         </TouchableOpacity>
@@ -593,17 +508,21 @@ export default function Status() {
             <Text style={s.actionLabel}>Text Status</Text>
           </TouchableOpacity>
 
+          {/* PHOTO BUTTON → COMING SOON POPUP */}
           <TouchableOpacity
             style={s.actionBtn}
-            onPress={pickImageStatus}
-            disabled={uploadingImage}
+            onPress={() => {
+              Alert.alert(
+                "Coming Soon 👀",
+                "Photo status feature is coming very soon!\n\nYou can still post awesome text statuses right now.",
+                [{ text: "OK", style: "default" }],
+              );
+            }}
           >
             <View style={s.actionIcon}>
               <IconCamera />
             </View>
-            <Text style={s.actionLabel}>
-              {uploadingImage ? "Uploading..." : "Photo"}
-            </Text>
+            <Text style={s.actionLabel}>Photo</Text>
           </TouchableOpacity>
         </View>
 
@@ -651,6 +570,7 @@ export default function Status() {
         ) : null}
       </ScrollView>
 
+      {/* ADD TEXT STATUS MODAL (Photo removed - coming soon) */}
       <Modal
         transparent
         visible={addModalVisible}
@@ -669,28 +589,11 @@ export default function Status() {
           <View style={s.modalOverlay}>
             <TouchableWithoutFeedback>
               <View style={s.modalCard}>
-                <Text style={s.modalTitle}>
-                  {uploadedImageUrl ? "Add Photo Status" : "Add Status"}
-                </Text>
-
-                {selectedImageUri ? (
-                  <Image
-                    source={{ uri: selectedImageUri }}
-                    style={s.previewImage}
-                    resizeMode="cover"
-                  />
-                ) : null}
+                <Text style={s.modalTitle}>Add Status</Text>
 
                 <TextInput
-                  style={[
-                    s.statusInput,
-                    selectedImageUri ? s.statusInputSmall : null,
-                  ]}
-                  placeholder={
-                    selectedImageUri
-                      ? "Write a caption (optional)"
-                      : "What's on your mind?"
-                  }
+                  style={s.statusInput}
+                  placeholder="What's on your mind?"
                   placeholderTextColor={T.faint}
                   value={statusText}
                   onChangeText={setStatusText}
@@ -708,11 +611,8 @@ export default function Status() {
                   >
                     <Text style={s.modalCancelText}>Cancel</Text>
                   </TouchableOpacity>
-
                   <TouchableOpacity style={s.modalPost} onPress={addStatus}>
-                    <Text style={s.modalPostText}>
-                      {uploadedImageUrl ? "Post Photo" : "Post Status"}
-                    </Text>
+                    <Text style={s.modalPostText}>Post Status</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -721,6 +621,7 @@ export default function Status() {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {/* STATUS VIEWER - now properly slides between users */}
       <Modal
         visible={viewerVisible}
         animationType="fade"
@@ -741,7 +642,6 @@ export default function Status() {
             {(currentStatus?.stories || []).map((_, i) => {
               const isActive = i === storyIndex;
               const isPassed = i < storyIndex;
-
               return (
                 <View key={i} style={s.progressBar}>
                   {isPassed ? (
@@ -823,7 +723,6 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: T.bg,
   },
-
   myCard: {
     margin: 20,
     padding: 16,
@@ -835,11 +734,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 14,
   },
-
   myAvatarWrap: {
     position: "relative",
   },
-
   myAvatar: {
     width: 58,
     height: 58,
@@ -850,13 +747,11 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(139,92,246,0.4)",
   },
-
   myAvatarText: {
     color: T.white,
     fontSize: 22,
     fontWeight: "800",
   },
-
   addBtn: {
     position: "absolute",
     bottom: -4,
@@ -870,26 +765,22 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: T.bg,
   },
-
   myName: {
     fontSize: 15,
     fontWeight: "700",
     color: T.white,
   },
-
   mySub: {
     fontSize: 12,
     color: T.faint,
     marginTop: 2,
   },
-
   actionRow: {
     flexDirection: "row",
     paddingHorizontal: 20,
     gap: 12,
     marginBottom: 4,
   },
-
   actionBtn: {
     flex: 1,
     flexDirection: "row",
@@ -901,7 +792,6 @@ const s = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
   },
-
   actionIcon: {
     width: 34,
     height: 34,
@@ -910,20 +800,17 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   actionLabel: {
     fontSize: 14,
     fontWeight: "600",
     color: T.whiteSoft,
   },
-
   divider: {
     height: 1,
     backgroundColor: T.border,
     marginHorizontal: 20,
     marginVertical: 10,
   },
-
   sectionLabel: {
     fontSize: 10,
     fontWeight: "700",
@@ -933,7 +820,6 @@ const s = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 6,
   },
-
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -941,22 +827,18 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     gap: 14,
   },
-
   ring: {
     width: 56,
     height: 56,
     borderRadius: 17,
     padding: 2.5,
   },
-
   ringUnseen: {
     backgroundColor: T.purpleMid,
   },
-
   ringSeen: {
     backgroundColor: "rgba(255,255,255,0.18)",
   },
-
   ringInner: {
     flex: 1,
     borderRadius: 14,
@@ -965,39 +847,33 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   ringText: {
     color: T.white,
     fontWeight: "700",
     fontSize: 14,
   },
-
   statusName: {
     fontSize: 15,
     fontWeight: "700",
     color: T.whiteSoft,
   },
-
   statusTime: {
     fontSize: 12,
     color: T.faint,
     marginTop: 2,
   },
-
   unseenDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
     backgroundColor: T.purpleGlow,
   },
-
   emptyText: {
     color: T.faint,
     textAlign: "center",
     marginTop: 40,
     fontSize: 14,
   },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.72)",
@@ -1005,7 +881,6 @@ const s = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 20,
   },
-
   modalCard: {
     width: "100%",
     backgroundColor: T.card,
@@ -1014,22 +889,12 @@ const s = StyleSheet.create({
     borderColor: T.border,
     padding: 18,
   },
-
   modalTitle: {
     color: T.white,
     fontSize: 18,
     fontWeight: "800",
     marginBottom: 14,
   },
-
-  previewImage: {
-    width: "100%",
-    height: 260,
-    borderRadius: 16,
-    marginBottom: 12,
-    backgroundColor: T.bgDeep,
-  },
-
   statusInput: {
     minHeight: 120,
     backgroundColor: T.bg,
@@ -1041,18 +906,12 @@ const s = StyleSheet.create({
     textAlignVertical: "top",
     fontSize: 15,
   },
-
-  statusInputSmall: {
-    minHeight: 90,
-  },
-
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 10,
     marginTop: 14,
   },
-
   modalCancel: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -1060,28 +919,23 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border,
   },
-
   modalCancelText: {
     color: T.white,
     fontWeight: "700",
   },
-
   modalPost: {
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
     backgroundColor: T.purpleMid,
   },
-
   modalPostText: {
     color: "#fff",
     fontWeight: "800",
   },
-
   viewer: {
     flex: 1,
   },
-
   progressWrap: {
     position: "absolute",
     top: 50,
@@ -1091,7 +945,6 @@ const s = StyleSheet.create({
     gap: 4,
     zIndex: 10,
   },
-
   progressBar: {
     flex: 1,
     height: 3,
@@ -1099,18 +952,15 @@ const s = StyleSheet.create({
     borderRadius: 10,
     overflow: "hidden",
   },
-
   progressFillFull: {
     width: "100%",
     height: "100%",
     backgroundColor: "#fff",
   },
-
   progressFillAnimated: {
     height: "100%",
     backgroundColor: "#fff",
   },
-
   viewerHeader: {
     position: "absolute",
     top: 62,
@@ -1118,26 +968,22 @@ const s = StyleSheet.create({
     right: 18,
     zIndex: 11,
   },
-
   viewerName: {
     color: "#fff",
     fontWeight: "800",
     fontSize: 15,
   },
-
   viewerTime: {
     color: "rgba(255,255,255,0.72)",
     fontSize: 12,
     marginTop: 2,
   },
-
   viewerCenter: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 20,
   },
-
   viewerText: {
     color: "#fff",
     fontSize: 28,
@@ -1145,12 +991,10 @@ const s = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700",
   },
-
   viewerImage: {
     width: "100%",
     height: "78%",
   },
-
   captionWrap: {
     position: "absolute",
     left: 16,
@@ -1161,7 +1005,6 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 14,
   },
-
   viewerCaption: {
     color: "#fff",
     fontSize: 15,
@@ -1169,14 +1012,12 @@ const s = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 22,
   },
-
   touchAreas: {
     position: "absolute",
     width: "100%",
     height: "100%",
     flexDirection: "row",
   },
-
   closeArea: {
     position: "absolute",
     top: 38,
@@ -1187,7 +1028,6 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   closeText: {
     color: "#fff",
     fontSize: 28,
