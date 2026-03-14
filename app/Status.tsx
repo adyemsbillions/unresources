@@ -3,6 +3,8 @@
   Purpose: WhatsApp-like Status Screen with text + photo status + caption + pause on hold
   Fix: Theme switching now works — static T replaced with live THEMES[themeMode] state
 */
+
+import * as ImagePicker from "expo-image-picker";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -452,15 +454,22 @@ function StatusRow({
 // ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
 
 export default function Status() {
-  // themeMode drives T — changing it instantly re-renders everything
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const T: Theme = THEMES[themeMode];
 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [statuses, setStatuses] = useState<StatusUser[]>([]);
   const [loading, setLoading] = useState(true);
-  const [addModalVisible, setAddModalVisible] = useState(false);
+
+  const [textModalVisible, setTextModalVisible] = useState(false);
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+
   const [statusText, setStatusText] = useState("");
+  const [imageCaption, setImageCaption] = useState("");
+  const [selectedImageUri, setSelectedImageUri] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [postingStatus, setPostingStatus] = useState(false);
+
   const [viewerVisible, setViewerVisible] = useState(false);
   const [statusIndex, setStatusIndex] = useState(0);
   const [storyIndex, setStoryIndex] = useState(0);
@@ -470,7 +479,6 @@ export default function Status() {
   const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const progressValueRef = useRef(0);
 
-  // Load saved theme on mount
   useEffect(() => {
     SecureStore.getItemAsync("theme")
       .then((saved) => {
@@ -481,7 +489,7 @@ export default function Status() {
   }, []);
 
   const handleThemeChange = (t: ThemeMode) => {
-    setThemeMode(t); // instant re-render
+    setThemeMode(t);
     SecureStore.setItemAsync("theme", t).catch(() => {});
   };
 
@@ -525,18 +533,28 @@ export default function Status() {
     init();
   }, []);
 
-  const resetComposer = () => setStatusText("");
+  const resetTextComposer = () => setStatusText("");
 
-  const addStatus = async () => {
+  const resetImageComposer = () => {
+    setImageCaption("");
+    setSelectedImageUri("");
+    setUploadingImage(false);
+  };
+
+  const addTextStatus = async () => {
     if (!currentUser?.id) {
       Alert.alert("Error", "No logged-in user found");
       return;
     }
+
     if (!statusText.trim()) {
       Alert.alert("Error", "Please type a status");
       return;
     }
+
     try {
+      setPostingStatus(true);
+
       const res = await fetch(`${API_BASE}/add_status.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -548,17 +566,149 @@ export default function Status() {
           background_color: T.purpleMid,
         }),
       });
+
       const text = await res.text();
       const data = JSON.parse(text);
+
       if (data.status === "success") {
-        resetComposer();
-        setAddModalVisible(false);
+        resetTextComposer();
+        setTextModalVisible(false);
         await loadStatuses(currentUser.id);
       } else {
         Alert.alert("Error", data.message || "Failed to add status");
       }
     } catch {
       Alert.alert("Error", "Network error");
+    } finally {
+      setPostingStatus(false);
+    }
+  };
+
+  const pickStatusImage = async () => {
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission required",
+          "Allow gallery access to pick image.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        allowsEditing: true,
+        aspect: [9, 16],
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+      setSelectedImageUri(asset.uri);
+      setUploadingImage(true);
+
+      if (!asset.base64) {
+        Alert.alert("Error", "Could not read image data");
+        setUploadingImage(false);
+        return;
+      }
+
+      const originalName =
+        asset.fileName ||
+        asset.uri.split("/").pop() ||
+        `status_${Date.now()}.jpg`;
+
+      const cleanName = originalName.split("?")[0];
+      const match = /\.(jpg|jpeg|png|gif|webp)$/i.exec(cleanName);
+      const ext = match ? match[1].toLowerCase() : "jpg";
+
+      let mimeType = "image/jpeg";
+      if (ext === "png") mimeType = "image/png";
+      if (ext === "gif") mimeType = "image/gif";
+      if (ext === "webp") mimeType = "image/webp";
+
+      const res = await fetch(`${API_BASE}/upload_status_image_base64.php`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: asset.base64,
+          mimeType,
+          extension: ext,
+        }),
+      });
+
+      const text = await res.text();
+      console.log("Status image upload raw:", text);
+
+      const data = JSON.parse(text);
+
+      if (data.success && data.imageUrl) {
+        setSelectedImageUri(data.imageUrl);
+        Alert.alert("Success", "Image uploaded successfully");
+      } else {
+        setSelectedImageUri("");
+        Alert.alert("Upload failed", data.message || "Could not upload image");
+      }
+    } catch (err: any) {
+      console.log("Status image upload error:", err);
+      setSelectedImageUri("");
+      Alert.alert("Error", err?.message || "Failed to upload image");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const addImageStatus = async () => {
+    if (!currentUser?.id) {
+      Alert.alert("Error", "No logged-in user found");
+      return;
+    }
+
+    if (!selectedImageUri) {
+      Alert.alert("Error", "Please choose an image");
+      return;
+    }
+
+    if (uploadingImage) {
+      Alert.alert("Please wait", "Image is still uploading");
+      return;
+    }
+
+    try {
+      setPostingStatus(true);
+
+      const res = await fetch(`${API_BASE}/add_status.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          type: "image",
+          content: imageCaption.trim(),
+          media_url: selectedImageUri,
+          background_color: null,
+        }),
+      });
+
+      const text = await res.text();
+      const data = JSON.parse(text);
+
+      if (data.status === "success") {
+        resetImageComposer();
+        setImageModalVisible(false);
+        await loadStatuses(currentUser.id);
+      } else {
+        Alert.alert("Error", data.message || "Failed to post image status");
+      }
+    } catch {
+      Alert.alert("Error", "Network error");
+    } finally {
+      setPostingStatus(false);
     }
   };
 
@@ -620,6 +770,7 @@ export default function Status() {
   const nextStory = async () => {
     const currentStatus = statuses[statusIndex];
     if (!currentStatus) return;
+
     if (storyIndex < currentStatus.stories.length - 1) {
       const newIndex = storyIndex + 1;
       setStoryIndex(newIndex);
@@ -698,7 +849,6 @@ export default function Status() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 90 }}
       >
-        {/* My Status card */}
         <TouchableOpacity
           style={[
             s.myCard,
@@ -715,8 +865,8 @@ export default function Status() {
               );
               if (myIndex >= 0) openViewer(myIndex);
             } else {
-              resetComposer();
-              setAddModalVisible(true);
+              resetTextComposer();
+              setTextModalVisible(true);
             }
           }}
         >
@@ -735,8 +885,8 @@ export default function Status() {
                 { backgroundColor: T.purpleGlow, borderColor: T.bg },
               ]}
               onPress={() => {
-                resetComposer();
-                setAddModalVisible(true);
+                resetTextComposer();
+                setTextModalVisible(true);
               }}
             >
               <IconPlus />
@@ -752,7 +902,6 @@ export default function Status() {
           </View>
         </TouchableOpacity>
 
-        {/* Action row */}
         <View style={s.actionRow}>
           <TouchableOpacity
             style={[
@@ -760,8 +909,8 @@ export default function Status() {
               { backgroundColor: T.card, borderColor: T.border },
             ]}
             onPress={() => {
-              resetComposer();
-              setAddModalVisible(true);
+              resetTextComposer();
+              setTextModalVisible(true);
             }}
           >
             <View
@@ -779,13 +928,10 @@ export default function Status() {
               s.actionBtn,
               { backgroundColor: T.card, borderColor: T.border },
             ]}
-            onPress={() =>
-              Alert.alert(
-                "Coming Soon 👀",
-                "Photo status feature is coming very soon!\n\nYou can still post awesome text statuses right now.",
-                [{ text: "OK", style: "default" }],
-              )
-            }
+            onPress={() => {
+              resetImageComposer();
+              setImageModalVisible(true);
+            }}
           >
             <View
               style={[s.actionIcon, { backgroundColor: `${T.purpleMid}33` }]}
@@ -846,20 +992,20 @@ export default function Status() {
         ) : null}
       </ScrollView>
 
-      {/* Add text status modal */}
+      {/* Text Status Modal */}
       <Modal
         transparent
-        visible={addModalVisible}
+        visible={textModalVisible}
         animationType="fade"
         onRequestClose={() => {
-          setAddModalVisible(false);
-          resetComposer();
+          setTextModalVisible(false);
+          resetTextComposer();
         }}
       >
         <TouchableWithoutFeedback
           onPress={() => {
-            setAddModalVisible(false);
-            resetComposer();
+            setTextModalVisible(false);
+            resetTextComposer();
           }}
         >
           <View style={s.modalOverlay}>
@@ -871,7 +1017,7 @@ export default function Status() {
                 ]}
               >
                 <Text style={[s.modalTitle, { color: T.white }]}>
-                  Add Status
+                  Add Text Status
                 </Text>
                 <TextInput
                   style={[
@@ -893,9 +1039,10 @@ export default function Status() {
                   <TouchableOpacity
                     style={[s.modalCancel, { borderColor: T.border }]}
                     onPress={() => {
-                      setAddModalVisible(false);
-                      resetComposer();
+                      setTextModalVisible(false);
+                      resetTextComposer();
                     }}
+                    disabled={postingStatus}
                   >
                     <Text style={[s.modalCancelText, { color: T.white }]}>
                       Cancel
@@ -903,9 +1050,12 @@ export default function Status() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.modalPost, { backgroundColor: T.purpleMid }]}
-                    onPress={addStatus}
+                    onPress={addTextStatus}
+                    disabled={postingStatus}
                   >
-                    <Text style={s.modalPostText}>Post Status</Text>
+                    <Text style={s.modalPostText}>
+                      {postingStatus ? "Posting..." : "Post Status"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -914,7 +1064,120 @@ export default function Status() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Status viewer (full screen — no theme needed, always dark) */}
+      {/* Image Status Modal */}
+      <Modal
+        transparent
+        visible={imageModalVisible}
+        animationType="fade"
+        onRequestClose={() => {
+          setImageModalVisible(false);
+          resetImageComposer();
+        }}
+      >
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setImageModalVisible(false);
+            resetImageComposer();
+          }}
+        >
+          <View style={s.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View
+                style={[
+                  s.modalCard,
+                  { backgroundColor: T.card, borderColor: T.border },
+                ]}
+              >
+                <Text style={[s.modalTitle, { color: T.white }]}>
+                  Add Photo Status
+                </Text>
+
+                <TouchableOpacity
+                  style={[
+                    s.imagePicker,
+                    { backgroundColor: T.bg, borderColor: T.border },
+                  ]}
+                  onPress={pickStatusImage}
+                  disabled={uploadingImage || postingStatus}
+                >
+                  {selectedImageUri ? (
+                    <Image
+                      source={{ uri: selectedImageUri }}
+                      style={s.previewImage}
+                    />
+                  ) : (
+                    <Text style={[s.imagePickerText, { color: T.faint }]}>
+                      Tap to choose status image
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                {uploadingImage && (
+                  <View style={{ marginBottom: 12, alignItems: "center" }}>
+                    <ActivityIndicator color={T.purpleGlow} />
+                    <Text
+                      style={{
+                        color: T.whiteMuted,
+                        marginTop: 8,
+                        fontSize: 13,
+                      }}
+                    >
+                      Uploading image...
+                    </Text>
+                  </View>
+                )}
+
+                <TextInput
+                  style={[
+                    s.captionInput,
+                    {
+                      backgroundColor: T.bg,
+                      borderColor: T.border,
+                      color: T.white,
+                    },
+                  ]}
+                  placeholder="Add a caption (optional)"
+                  placeholderTextColor={T.faint}
+                  value={imageCaption}
+                  onChangeText={setImageCaption}
+                  multiline
+                  maxLength={200}
+                />
+
+                <View style={s.modalButtons}>
+                  <TouchableOpacity
+                    style={[s.modalCancel, { borderColor: T.border }]}
+                    onPress={() => {
+                      setImageModalVisible(false);
+                      resetImageComposer();
+                    }}
+                    disabled={uploadingImage || postingStatus}
+                  >
+                    <Text style={[s.modalCancelText, { color: T.white }]}>
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.modalPost, { backgroundColor: T.purpleMid }]}
+                    onPress={addImageStatus}
+                    disabled={uploadingImage || postingStatus}
+                  >
+                    <Text style={s.modalPostText}>
+                      {uploadingImage
+                        ? "Uploading..."
+                        : postingStatus
+                          ? "Posting..."
+                          : "Post Photo"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Viewer */}
       <Modal
         visible={viewerVisible}
         animationType="fade"
@@ -1011,7 +1274,7 @@ export default function Status() {
   );
 }
 
-// ─── STYLES (layout only — zero hardcoded colors) ────────────────────────────
+// ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
@@ -1173,6 +1436,32 @@ const s = StyleSheet.create({
     textAlignVertical: "top",
     fontSize: 15,
   },
+  imagePicker: {
+    width: "100%",
+    height: 260,
+    borderWidth: 1,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    marginBottom: 12,
+  },
+  imagePickerText: {
+    fontSize: 14,
+  },
+  previewImage: {
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  captionInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    textAlignVertical: "top",
+    fontSize: 15,
+  },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -1189,7 +1478,6 @@ const s = StyleSheet.create({
   modalPost: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
   modalPostText: { color: "#fff", fontWeight: "800" },
 
-  // Viewer (always dark — full screen immersive)
   viewer: { flex: 1 },
   progressWrap: {
     position: "absolute",
