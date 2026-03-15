@@ -5,6 +5,7 @@
   - Real avatar_url shown when available → fallback to colored initials
   - My Status card also uses real avatar if available
   - Gold verified badge next to name for user_id === 1 (demo/hardcoded)
+  - Public view counts shown in list and viewer (from backend status_views table)
 */
 
 import * as ImagePicker from "expo-image-picker";
@@ -123,6 +124,7 @@ type Story = {
   background_color?: string;
   created_at: string;
   seen?: boolean;
+  views?: number; // ← added for public view count
 };
 
 type StatusUser = {
@@ -488,6 +490,7 @@ function StatusRow({
   T: Theme;
 }) {
   const verified = isVerified(status.user_id);
+  const latestStory = status.stories[0];
 
   return (
     <TouchableOpacity
@@ -513,11 +516,35 @@ function StatusRow({
           </Text>
           {verified && <VerifiedBadge size={16} />}
         </View>
-        <Text style={[s.statusTime, { color: T.faint }]}>
-          {status.stories.length > 0
-            ? timeAgo(status.stories[0].created_at)
-            : "No update"}
-        </Text>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 2,
+          }}
+        >
+          <Text style={[s.statusTime, { color: T.faint }]}>
+            {status.stories.length > 0
+              ? timeAgo(latestStory.created_at)
+              : "No update"}
+          </Text>
+
+          {status.stories.length > 0 &&
+            latestStory.views !== undefined &&
+            latestStory.views > 0 && (
+              <>
+                <Text style={[s.statusTime, { color: T.faint }]}>·</Text>
+                <Text
+                  style={[s.statusTime, { color: T.faint, fontWeight: "500" }]}
+                >
+                  {latestStory.views}{" "}
+                  {latestStory.views === 1 ? "view" : "views"}
+                </Text>
+              </>
+            )}
+        </View>
       </View>
 
       {!status.seen && (
@@ -1262,9 +1289,19 @@ export default function Status() {
 
           <View style={s.viewerHeader}>
             <Text style={s.viewerName}>{currentStatus?.name}</Text>
-            <Text style={s.viewerTime}>
-              {currentStory?.created_at ? timeAgo(currentStory.created_at) : ""}
-            </Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
+            >
+              <Text style={s.viewerTime}>
+                {currentStory?.created_at
+                  ? timeAgo(currentStory.created_at)
+                  : ""}
+              </Text>
+
+              {currentStory?.views !== undefined && currentStory.views > 0 && (
+                <Text style={s.viewerViews}>👁 {currentStory.views}</Text>
+              )}
+            </View>
           </View>
 
           <View style={s.viewerCenter}>
@@ -1452,7 +1489,6 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  ringText: { fontWeight: "700", fontSize: 14 },
   statusName: { fontSize: 15, fontWeight: "700" },
   statusTime: { fontSize: 12, marginTop: 2 },
   unseenDot: { width: 10, height: 10, borderRadius: 5 },
@@ -1540,6 +1576,11 @@ const s = StyleSheet.create({
   },
   viewerName: { color: "#fff", fontWeight: "800", fontSize: 15 },
   viewerTime: { color: "rgba(255,255,255,0.72)", fontSize: 12, marginTop: 2 },
+  viewerViews: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
   viewerCenter: {
     flex: 1,
     alignItems: "center",
