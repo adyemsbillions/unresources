@@ -2,9 +2,15 @@
   File: app/Profile.tsx
   Purpose: Unimaid Resources — Profile Screen (Enhanced)
   - Unified theme system (4 themes, synced with Home & ChatRoom)
-  - Better avatar hero, stats, menu, and edit modal
+  - Better avatar hero, menu, and edit modal
+  - Accent color now selectable from preset colors
+  - Avatar now selected from device and uploaded to server
+  - Removed Chats / Listings / Contacts stats
+  - Added Handouts / Quiz / Summaries stats
+  - Added Request Verification menu item
 */
 
+import * as ImagePicker from "expo-image-picker";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useRef, useState } from "react";
@@ -12,6 +18,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -22,7 +29,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 import {
   SafeAreaView,
@@ -164,6 +171,19 @@ const THEME_LABELS: Record<ThemeMode, { icon: string; label: string }> = {
   forest: { icon: "◈", label: "Forest" },
 };
 
+const ACCENT_PRESETS = [
+  "#7C5CFC",
+  "#6244E5",
+  "#4F8EFF",
+  "#22D3A0",
+  "#2DD882",
+  "#FF8A00",
+  "#EF4444",
+  "#EC4899",
+  "#06B6D4",
+  "#F59E0B",
+];
+
 // ─── TYPES ───────────────────────────────────────────────────────────────────
 
 type UserType = {
@@ -178,6 +198,8 @@ type UserType = {
   avatar_url?: string;
   email?: string;
 };
+
+type ThemeType = ReturnType<typeof buildTheme>;
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
 
@@ -397,13 +419,7 @@ function NavIcon({ id, color }: { id: string; color: string }) {
   return null;
 }
 
-function BottomNav({
-  active,
-  C,
-}: {
-  active: string;
-  C: ReturnType<typeof buildTheme>;
-}) {
+function BottomNav({ active, C }: { active: string; C: ThemeType }) {
   const router = useRouter();
   return (
     <View
@@ -457,7 +473,7 @@ function ThemeSwitcher({
 }: {
   current: ThemeMode;
   onChange: (t: ThemeMode) => void;
-  C: ReturnType<typeof buildTheme>;
+  C: ThemeType;
 }) {
   const [open, setOpen] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
@@ -548,6 +564,7 @@ const MENU_SECTIONS = [
     items: [
       { icon: "📢", label: "Announcements", bg: "#5b21b6" },
       { icon: "🛍️", label: "My Listings", bg: "#0e7490" },
+      { icon: "✅", label: "Request Verification", bg: "#065f46" },
       { icon: "🔔", label: "Notifications", bg: "#b45309" },
     ],
   },
@@ -568,7 +585,7 @@ const MENU_SECTIONS = [
   },
 ];
 
-// ─── FIELD INPUT (for modal) ──────────────────────────────────────────────────
+// ─── FIELD INPUT ─────────────────────────────────────────────────────────────
 
 function FieldInput({
   label,
@@ -587,9 +604,10 @@ function FieldInput({
   multiline?: boolean;
   maxLength?: number;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
-  C: ReturnType<typeof buildTheme>;
+  C: ThemeType;
 }) {
   const [focused, setFocused] = useState(false);
+
   return (
     <View style={{ marginBottom: 18 }}>
       <Text style={[s.modalLabel, { color: TC.textMuted }]}>{label}</Text>
@@ -631,6 +649,7 @@ export default function Profile() {
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -643,7 +662,6 @@ export default function Profile() {
     avatar_url: "",
   });
 
-  // Persist theme
   const handleThemeChange = async (t: ThemeMode) => {
     setTheme(t);
     try {
@@ -664,12 +682,16 @@ export default function Profile() {
       setLoading(true);
       try {
         let userData: UserType | null = null;
-        if (passedUser && typeof passedUser === "string")
+
+        if (passedUser && typeof passedUser === "string") {
           userData = JSON.parse(passedUser);
-        if (!userData) {
-          const s = await SecureStore.getItemAsync("user");
-          if (s) userData = JSON.parse(s);
         }
+
+        if (!userData) {
+          const stored = await SecureStore.getItemAsync("user");
+          if (stored) userData = JSON.parse(stored);
+        }
+
         if (userData) {
           setCurrentUser(userData);
           setEditForm({
@@ -687,15 +709,108 @@ export default function Profile() {
         setLoading(false);
       }
     };
+
     loadProfile();
   }, [passedUser]);
+
+  const uploadAvatarBase64 = async (
+    imageBase64: string,
+    extension: string,
+    mimeType: string,
+  ) => {
+    const res = await fetch(`${API_BASE}/upload_profile_image_base64.php`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        image: imageBase64,
+        extension,
+        mimeType,
+      }),
+    });
+
+    const text = await res.text();
+    console.log("Profile avatar upload raw:", text);
+
+    const data = JSON.parse(text);
+    if (data.success && data.imageUrl) {
+      return data.imageUrl as string;
+    }
+
+    throw new Error(data.message || "Avatar upload failed");
+  };
+
+  const pickAvatar = async () => {
+    try {
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission required",
+          "Please allow photo library access to choose an avatar.",
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        allowsEditing: true,
+        aspect: [1, 1],
+        base64: true,
+      });
+
+      if (result.canceled || !result.assets?.length) return;
+
+      const asset = result.assets[0];
+
+      if (!asset.base64) {
+        Alert.alert("Error", "Could not read selected image.");
+        return;
+      }
+
+      setUploadingAvatar(true);
+
+      const originalName =
+        asset.fileName ||
+        asset.uri.split("/").pop() ||
+        `avatar_${Date.now()}.jpg`;
+
+      const cleanName = originalName.split("?")[0];
+      const match = /\.(jpg|jpeg|png|gif|webp)$/i.exec(cleanName);
+      const ext = match ? match[1].toLowerCase() : "jpg";
+
+      let mimeType = "image/jpeg";
+      if (ext === "png") mimeType = "image/png";
+      if (ext === "gif") mimeType = "image/gif";
+      if (ext === "webp") mimeType = "image/webp";
+
+      const uploadedUrl = await uploadAvatarBase64(asset.base64, ext, mimeType);
+
+      setEditForm((prev) => ({
+        ...prev,
+        avatar_url: uploadedUrl,
+      }));
+
+      Alert.alert("Success", "Avatar selected successfully.");
+    } catch (err: any) {
+      console.log("Profile avatar upload error:", err);
+      Alert.alert("Error", err?.message || "Failed to upload avatar.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!currentUser?.id) {
       Alert.alert("Error", "No user ID found.");
       return;
     }
+
     setSaving(true);
+
     try {
       const body = {
         user_id: currentUser.id,
@@ -707,12 +822,15 @@ export default function Profile() {
         accent_color: editForm.color,
         profile_picture: editForm.avatar_url,
       };
+
       const res = await fetch(`${API_BASE}/update_profile.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
       const data = await res.json();
+
       if (data.status === "success") {
         const updated = {
           ...currentUser,
@@ -724,10 +842,13 @@ export default function Profile() {
           color: body.accent_color,
           avatar_url: body.profile_picture,
         };
+
         setCurrentUser(updated);
         await SecureStore.setItemAsync("user", JSON.stringify(updated));
         setEditModalVisible(false);
-      } else Alert.alert("Error", data.message || "Failed to update.");
+      } else {
+        Alert.alert("Error", data.message || "Failed to update.");
+      }
     } catch {
       Alert.alert("Error", "Network error.");
     } finally {
@@ -763,10 +884,9 @@ export default function Profile() {
   const initials =
     currentUser?.initials || name.slice(0, 2).toUpperCase() || "??";
   const avatarColor = currentUser?.color || C.accentMid;
+  const previewColor = editForm.color || avatarColor;
 
-  // ─── LOADING ─────────────────────────────────────────────────────────────
-
-  if (loading)
+  if (loading) {
     return (
       <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
         <StatusBar barStyle={C.statusBar} backgroundColor={C.bg} />
@@ -775,17 +895,14 @@ export default function Profile() {
         </View>
       </SafeAreaView>
     );
-
-  // ─── RENDER ──────────────────────────────────────────────────────────────
+  }
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
       <StatusBar barStyle={C.statusBar} backgroundColor={C.bg} />
 
-      {/* Accent top line */}
       <View style={[s.accentLine, { backgroundColor: C.accent }]} />
 
-      {/* Top bar */}
       <View style={[s.topBar, { borderBottomColor: C.border }]}>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -827,14 +944,12 @@ export default function Profile() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* ── HERO ─────────────────────────────────────────────────────────── */}
         <View
           style={[
             s.heroCard,
             { backgroundColor: C.card, borderColor: C.border },
           ]}
         >
-          {/* Decorative banner */}
           <View style={[s.heroBanner, { backgroundColor: avatarColor + "18" }]}>
             <View
               style={[
@@ -844,22 +959,35 @@ export default function Profile() {
             />
           </View>
 
-          {/* Avatar */}
           <View style={s.heroBody}>
             <View style={s.avatarWrap}>
-              <View
-                style={[
-                  s.avatar,
-                  {
-                    backgroundColor: avatarColor + "22",
-                    borderColor: avatarColor + "66",
-                  },
-                ]}
-              >
-                <Text style={[s.avatarText, { color: avatarColor }]}>
-                  {initials}
-                </Text>
-              </View>
+              {currentUser?.avatar_url ? (
+                <Image
+                  source={{ uri: currentUser.avatar_url }}
+                  style={[
+                    s.avatarImage,
+                    {
+                      borderColor: avatarColor + "66",
+                      backgroundColor: C.bgDeep,
+                    },
+                  ]}
+                />
+              ) : (
+                <View
+                  style={[
+                    s.avatar,
+                    {
+                      backgroundColor: avatarColor + "22",
+                      borderColor: avatarColor + "66",
+                    },
+                  ]}
+                >
+                  <Text style={[s.avatarText, { color: avatarColor }]}>
+                    {initials}
+                  </Text>
+                </View>
+              )}
+
               <TouchableOpacity
                 style={[
                   s.editAvatarBtn,
@@ -902,7 +1030,6 @@ export default function Profile() {
           </View>
         </View>
 
-        {/* ── STATS ────────────────────────────────────────────────────────── */}
         <View
           style={[
             s.statsCard,
@@ -910,9 +1037,9 @@ export default function Profile() {
           ]}
         >
           {[
-            { val: "24", lbl: "Chats" },
-            { val: "7", lbl: "Listings" },
-            { val: "142", lbl: "Contacts" },
+            { val: "24", lbl: "Handouts" },
+            { val: "7", lbl: "Quiz" },
+            { val: "42", lbl: "Summaries" },
           ].map((st, i, arr) => (
             <React.Fragment key={st.lbl}>
               <View style={s.statBox}>
@@ -928,7 +1055,6 @@ export default function Profile() {
           ))}
         </View>
 
-        {/* ── TOGGLES ───────────────────────────────────────────────────────── */}
         <View
           style={[
             s.togglesCard,
@@ -951,7 +1077,6 @@ export default function Profile() {
           </View>
         </View>
 
-        {/* ── MENU SECTIONS ────────────────────────────────────────────────── */}
         {MENU_SECTIONS.map((section, si) => (
           <View key={si} style={s.menuSection}>
             <Text style={[s.sectionLabel, { color: C.textFaint }]}>
@@ -988,7 +1113,6 @@ export default function Profile() {
           </View>
         ))}
 
-        {/* ── LOGOUT ───────────────────────────────────────────────────────── */}
         <TouchableOpacity
           style={[
             s.logoutBtn,
@@ -1009,7 +1133,6 @@ export default function Profile() {
         </Text>
       </ScrollView>
 
-      {/* ── EDIT MODAL ────────────────────────────────────────────────────── */}
       <Modal
         animationType="slide"
         transparent
@@ -1028,12 +1151,10 @@ export default function Profile() {
                 { backgroundColor: C.card, borderColor: C.borderStrong },
               ]}
             >
-              {/* Handle */}
               <View
                 style={[s.modalHandle, { backgroundColor: C.borderStrong }]}
               />
 
-              {/* Header */}
               <View style={[s.modalHeader, { borderBottomColor: C.border }]}>
                 <Text style={[s.modalTitle, { color: C.text }]}>
                   Edit Profile
@@ -1054,39 +1175,72 @@ export default function Profile() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
               >
-                {/* Avatar preview */}
                 <View style={s.modalAvatarRow}>
-                  <View
-                    style={[
-                      s.modalAvatar,
-                      {
-                        backgroundColor: (editForm.color || avatarColor) + "22",
-                        borderColor: (editForm.color || avatarColor) + "66",
-                      },
-                    ]}
-                  >
-                    <Text
+                  {editForm.avatar_url ? (
+                    <Image
+                      source={{ uri: editForm.avatar_url }}
                       style={[
-                        s.modalAvatarText,
-                        { color: editForm.color || avatarColor },
+                        s.modalAvatarImage,
+                        {
+                          borderColor: previewColor + "66",
+                          backgroundColor: C.bgDeep,
+                        },
+                      ]}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        s.modalAvatar,
+                        {
+                          backgroundColor: previewColor + "22",
+                          borderColor: previewColor + "66",
+                        },
                       ]}
                     >
-                      {editForm.initials || initials}
-                    </Text>
-                  </View>
+                      <Text
+                        style={[s.modalAvatarText, { color: previewColor }]}
+                      >
+                        {editForm.initials || initials}
+                      </Text>
+                    </View>
+                  )}
+
                   <View style={{ flex: 1 }}>
                     <Text style={[s.modalAvatarHint, { color: C.textMuted }]}>
-                      Preview of your avatar
+                      Preview of your profile
                     </Text>
                     <Text
                       style={[
                         { color: C.textFaint, fontSize: 12, marginTop: 2 },
                       ]}
                     >
-                      Initials & color update live
+                      Avatar and accent color update live
                     </Text>
                   </View>
                 </View>
+
+                <TouchableOpacity
+                  style={[
+                    s.avatarUploadBtn,
+                    {
+                      backgroundColor: C.accentFaint,
+                      borderColor: C.accentMid,
+                    },
+                  ]}
+                  onPress={pickAvatar}
+                  disabled={uploadingAvatar}
+                >
+                  {uploadingAvatar ? (
+                    <ActivityIndicator size="small" color={C.accentGlow} />
+                  ) : (
+                    <IconEdit color={C.accentGlow} size={15} />
+                  )}
+                  <Text style={[s.avatarUploadText, { color: C.accentGlow }]}>
+                    {uploadingAvatar
+                      ? "Uploading Avatar..."
+                      : "Choose Avatar from Device"}
+                  </Text>
+                </TouchableOpacity>
 
                 <FieldInput
                   label="Full Name"
@@ -1138,24 +1292,31 @@ export default function Profile() {
                   C={C}
                 />
 
-                <FieldInput
-                  label="Accent Color (#HEX)"
-                  value={editForm.color}
-                  onChange={(v) => setEditForm({ ...editForm, color: v })}
-                  placeholder="#7C5CFC"
-                  C={C}
-                />
+                <Text style={[s.modalLabel, { color: C.textMuted }]}>
+                  Accent Color
+                </Text>
+                <View style={s.colorGrid}>
+                  {ACCENT_PRESETS.map((color) => {
+                    const selected = editForm.color === color;
+                    return (
+                      <TouchableOpacity
+                        key={color}
+                        style={[
+                          s.colorChip,
+                          {
+                            backgroundColor: color,
+                            borderColor: selected ? C.text : "transparent",
+                          },
+                        ]}
+                        onPress={() => setEditForm({ ...editForm, color })}
+                        activeOpacity={0.85}
+                      >
+                        {selected ? <IconCheck color="#fff" size={14} /> : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
 
-                <FieldInput
-                  label="Avatar URL (optional)"
-                  value={editForm.avatar_url}
-                  onChange={(v) => setEditForm({ ...editForm, avatar_url: v })}
-                  placeholder="https://example.com/avatar.jpg"
-                  autoCapitalize="none"
-                  C={C}
-                />
-
-                {/* Buttons */}
                 <View style={s.modalButtons}>
                   <TouchableOpacity
                     style={[
@@ -1179,7 +1340,7 @@ export default function Profile() {
                       },
                     ]}
                     onPress={handleSaveProfile}
-                    disabled={saving}
+                    disabled={saving || uploadingAvatar}
                   >
                     {saving ? (
                       <ActivityIndicator size={16} color="#fff" />
@@ -1209,7 +1370,6 @@ const s = StyleSheet.create({
   centerWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   accentLine: { height: 2, width: "100%", opacity: 0.6 },
 
-  // Top bar
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1239,7 +1399,6 @@ const s = StyleSheet.create({
     borderWidth: 1,
   },
 
-  // Theme dropdown
   themeDropdown: {
     position: "absolute",
     top: 46,
@@ -1263,7 +1422,6 @@ const s = StyleSheet.create({
   themeLabel: { fontSize: 14, flex: 1 },
   themeDot: { width: 6, height: 6, borderRadius: 3 },
 
-  // Hero card
   heroCard: {
     marginHorizontal: 16,
     marginTop: 14,
@@ -1289,6 +1447,12 @@ const s = StyleSheet.create({
     borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 3,
+  },
+  avatarImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 26,
     borderWidth: 3,
   },
   avatarText: { fontSize: 28, fontWeight: "900" },
@@ -1325,7 +1489,6 @@ const s = StyleSheet.create({
   },
   editProfileText: { fontWeight: "700", fontSize: 14 },
 
-  // Stats
   statsCard: {
     flexDirection: "row",
     marginHorizontal: 16,
@@ -1344,7 +1507,6 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
 
-  // Toggles card
   togglesCard: {
     marginHorizontal: 16,
     marginBottom: 10,
@@ -1359,7 +1521,6 @@ const s = StyleSheet.create({
     padding: 13,
   },
 
-  // Menu
   sectionLabel: {
     fontSize: 10,
     fontWeight: "700",
@@ -1393,7 +1554,6 @@ const s = StyleSheet.create({
   menuLabel: { flex: 1, fontSize: 14, fontWeight: "600" },
   itemDivider: { height: 1, marginLeft: 64 },
 
-  // Logout
   logoutBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1414,7 +1574,6 @@ const s = StyleSheet.create({
     letterSpacing: 0.4,
   },
 
-  // Modal
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
@@ -1459,7 +1618,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
-    marginBottom: 22,
+    marginBottom: 16,
     padding: 14,
     borderRadius: 14,
   },
@@ -1471,8 +1630,28 @@ const s = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
   },
+  modalAvatarImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    borderWidth: 2,
+  },
   modalAvatarText: { fontSize: 20, fontWeight: "900" },
   modalAvatarHint: { fontSize: 14, fontWeight: "600" },
+  avatarUploadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    marginBottom: 18,
+  },
+  avatarUploadText: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
   modalLabel: {
     fontSize: 12,
     fontWeight: "600",
@@ -1485,6 +1664,20 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
+  },
+  colorGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 20,
+  },
+  colorChip: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalButtons: { flexDirection: "row", gap: 12, marginTop: 8 },
   modalCancelBtn: {
@@ -1511,7 +1704,6 @@ const s = StyleSheet.create({
   modalBtnText: { fontSize: 15, fontWeight: "600" },
   modalBtnTextWhite: { color: "#fff", fontSize: 15, fontWeight: "700" },
 
-  // Bottom nav
   bottomNav: {
     flexDirection: "row",
     borderTopWidth: 1,

@@ -1,7 +1,10 @@
 /*
   File: app/Status.tsx
   Purpose: WhatsApp-like Status Screen with text + photo status + caption + pause on hold
-  Fix: Theme switching now works — static T replaced with live THEMES[themeMode] state
+  Updates (March 2025):
+  - Real avatar_url shown when available → fallback to colored initials
+  - My Status card also uses real avatar if available
+  - Gold verified badge next to name for user_id === 1 (demo/hardcoded)
 */
 
 import * as ImagePicker from "expo-image-picker";
@@ -26,7 +29,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path } from "react-native-svg";
-import { BottomNav } from "./Home";
+import { BottomNav } from "./Home"; // Assuming this exists in your project
 
 const API_BASE = "https://unresources.cravii.ng/api";
 
@@ -152,6 +155,10 @@ function timeAgo(dateString: string) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+function isVerified(userId: number | string): boolean {
+  return Number(userId) === 1; // demo: user 1 is verified (gold badge)
+}
+
 // ─── ICONS ───────────────────────────────────────────────────────────────────
 
 function IconPlus({
@@ -246,6 +253,80 @@ function IconBell({ color, size = 19 }: { color: string; size?: number }) {
         strokeLinecap="round"
       />
     </Svg>
+  );
+}
+
+// Verified badge icon
+function VerifiedBadge({ size = 16, color = "#FFD700" }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx="12" cy="12" r="10" fill={color} />
+      <Path
+        d="M9 12l2 2 4-4"
+        stroke="#000"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// ─── AVATAR COMPONENT ────────────────────────────────────────────────────────
+
+function UserAvatar({
+  user,
+  size = 56,
+  borderWidth = 2.5,
+  T,
+}: {
+  user: { avatar?: string; color?: string; initials?: string; name: string };
+  size?: number;
+  borderWidth?: number;
+  T: Theme;
+}) {
+  const hasAvatar = !!user.avatar;
+  const bgColor = user.color || T.purpleMid;
+  const initials = user.initials || getInitials(user.name);
+
+  if (hasAvatar) {
+    return (
+      <Image
+        source={{ uri: user.avatar }}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2 + borderWidth,
+          borderWidth,
+          borderColor: T.bg,
+        }}
+      />
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2 + borderWidth,
+        backgroundColor: bgColor,
+        borderWidth,
+        borderColor: T.bg,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Text
+        style={{
+          color: "#fff",
+          fontSize: size * 0.38,
+          fontWeight: "800",
+        }}
+      >
+        {initials}
+      </Text>
+    </View>
   );
 }
 
@@ -370,14 +451,14 @@ function TopBar({
           <Text style={[s.wordmarkSub, { color: T.faint }]}>
             University of Maiduguri
           </Text>
-          {username ? (
+          {username && (
             <>
               <Text style={{ color: T.faint, fontSize: 11 }}>·</Text>
               <Text style={[s.usernameTag, { color: T.white }]}>
                 @{username}
               </Text>
             </>
-          ) : null}
+          )}
         </View>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
@@ -406,6 +487,8 @@ function StatusRow({
   onPress: () => void;
   T: Theme;
 }) {
+  const verified = isVerified(status.user_id);
+
   return (
     <TouchableOpacity
       style={s.statusRow}
@@ -420,38 +503,31 @@ function StatusRow({
             : { backgroundColor: T.purpleMid },
         ]}
       >
-        <View
-          style={[
-            s.ringInner,
-            {
-              backgroundColor: status.color || T.purpleMid,
-              borderColor: T.bg,
-            },
-          ]}
-        >
-          <Text style={[s.ringText, { color: T.white }]}>
-            {status.initials || getInitials(status.name)}
-          </Text>
-        </View>
+        <UserAvatar user={status} size={52} borderWidth={2.5} T={T} />
       </View>
+
       <View style={{ flex: 1 }}>
-        <Text style={[s.statusName, { color: T.whiteSoft }]}>
-          {status.name}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text style={[s.statusName, { color: T.whiteSoft }]}>
+            {status.name}
+          </Text>
+          {verified && <VerifiedBadge size={16} />}
+        </View>
         <Text style={[s.statusTime, { color: T.faint }]}>
           {status.stories.length > 0
             ? timeAgo(status.stories[0].created_at)
             : "No update"}
         </Text>
       </View>
-      {!status.seen ? (
+
+      {!status.seen && (
         <View style={[s.unseenDot, { backgroundColor: T.purpleGlow }]} />
-      ) : null}
+      )}
     </TouchableOpacity>
   );
 }
 
-// ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function Status() {
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
@@ -497,9 +573,7 @@ export default function Status() {
     const sub = progress.addListener(({ value }) => {
       progressValueRef.current = value;
     });
-    return () => {
-      progress.removeListener(sub);
-    };
+    return () => progress.removeListener(sub);
   }, [progress]);
 
   const loadStatuses = async (userId: number | string) => {
@@ -534,7 +608,6 @@ export default function Status() {
   }, []);
 
   const resetTextComposer = () => setStatusText("");
-
   const resetImageComposer = () => {
     setImageCaption("");
     setSelectedImageUri("");
@@ -542,19 +615,12 @@ export default function Status() {
   };
 
   const addTextStatus = async () => {
-    if (!currentUser?.id) {
-      Alert.alert("Error", "No logged-in user found");
-      return;
-    }
-
-    if (!statusText.trim()) {
-      Alert.alert("Error", "Please type a status");
-      return;
-    }
+    if (!currentUser?.id)
+      return Alert.alert("Error", "No logged-in user found");
+    if (!statusText.trim()) return Alert.alert("Error", "Please type a status");
 
     try {
       setPostingStatus(true);
-
       const res = await fetch(`${API_BASE}/add_status.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -566,7 +632,6 @@ export default function Status() {
           background_color: T.purpleMid,
         }),
       });
-
       const text = await res.text();
       const data = JSON.parse(text);
 
@@ -588,13 +653,11 @@ export default function Status() {
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (status !== "granted") {
-        Alert.alert(
+        return Alert.alert(
           "Permission required",
           "Allow gallery access to pick image.",
         );
-        return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -621,7 +684,6 @@ export default function Status() {
         asset.fileName ||
         asset.uri.split("/").pop() ||
         `status_${Date.now()}.jpg`;
-
       const cleanName = originalName.split("?")[0];
       const match = /\.(jpg|jpeg|png|gif|webp)$/i.exec(cleanName);
       const ext = match ? match[1].toLowerCase() : "jpg";
@@ -633,19 +695,12 @@ export default function Status() {
 
       const res = await fetch(`${API_BASE}/upload_status_image_base64.php`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          image: asset.base64,
-          mimeType,
-          extension: ext,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: asset.base64, mimeType, extension: ext }),
       });
 
       const text = await res.text();
       console.log("Status image upload raw:", text);
-
       const data = JSON.parse(text);
 
       if (data.success && data.imageUrl) {
@@ -665,24 +720,15 @@ export default function Status() {
   };
 
   const addImageStatus = async () => {
-    if (!currentUser?.id) {
-      Alert.alert("Error", "No logged-in user found");
-      return;
-    }
-
-    if (!selectedImageUri) {
-      Alert.alert("Error", "Please choose an image");
-      return;
-    }
-
-    if (uploadingImage) {
-      Alert.alert("Please wait", "Image is still uploading");
-      return;
-    }
+    if (!currentUser?.id)
+      return Alert.alert("Error", "No logged-in user found");
+    if (!selectedImageUri)
+      return Alert.alert("Error", "Please choose an image");
+    if (uploadingImage)
+      return Alert.alert("Please wait", "Image is still uploading");
 
     try {
       setPostingStatus(true);
-
       const res = await fetch(`${API_BASE}/add_status.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -694,7 +740,6 @@ export default function Status() {
           background_color: null,
         }),
       });
-
       const text = await res.text();
       const data = JSON.parse(text);
 
@@ -741,7 +786,7 @@ export default function Status() {
   const pauseProgress = () => {
     if (!viewerVisible) return;
     setIsPaused(true);
-    if (animationRef.current) animationRef.current.stop();
+    animationRef.current?.stop();
   };
 
   const resumeProgress = () => {
@@ -763,7 +808,7 @@ export default function Status() {
   const closeViewer = () => {
     setViewerVisible(false);
     setIsPaused(false);
-    if (animationRef.current) animationRef.current.stop();
+    animationRef.current?.stop();
     progress.setValue(0);
   };
 
@@ -814,10 +859,15 @@ export default function Status() {
 
   const currentStatus = statuses[statusIndex];
   const currentStory = currentStatus?.stories?.[storyIndex];
-  const myLatestTime =
-    myStatuses.length > 0 && myStatuses[0].stories.length > 0
-      ? timeAgo(myStatuses[0].stories[0].created_at)
-      : "";
+
+  // Prepare data for "My Status" avatar
+  const myStatus = myStatuses[0];
+  const myAvatarData = {
+    avatar: currentUser?.avatar_url || myStatus?.avatar,
+    color: currentUser?.color,
+    initials: currentUser?.initials,
+    name: currentUser?.name || currentUser?.username || "You",
+  };
 
   if (loading) {
     return (
@@ -852,10 +902,7 @@ export default function Status() {
         <TouchableOpacity
           style={[
             s.myCard,
-            {
-              backgroundColor: T.purpleFaint,
-              borderColor: `${T.purpleMid}66`,
-            },
+            { backgroundColor: T.purpleFaint, borderColor: `${T.purpleMid}66` },
           ]}
           activeOpacity={0.85}
           onPress={() => {
@@ -871,14 +918,7 @@ export default function Status() {
           }}
         >
           <View style={s.myAvatarWrap}>
-            <View style={[s.myAvatar, { backgroundColor: T.purpleMid }]}>
-              <Text style={[s.myAvatarText, { color: T.white }]}>
-                {currentUser?.initials ||
-                  getInitials(
-                    currentUser?.name || currentUser?.username || "U",
-                  )}
-              </Text>
-            </View>
+            <UserAvatar user={myAvatarData} size={58} borderWidth={2} T={T} />
             <TouchableOpacity
               style={[
                 s.addBtn,
@@ -896,7 +936,7 @@ export default function Status() {
             <Text style={[s.myName, { color: T.white }]}>My Status</Text>
             <Text style={[s.mySub, { color: T.faint }]}>
               {myStatuses.length > 0
-                ? `Tap to view • ${myLatestTime}`
+                ? `Tap to view • ${timeAgo(myStatuses[0].stories[0].created_at)}`
                 : "Tap + to add a text update"}
             </Text>
           </View>
@@ -944,7 +984,7 @@ export default function Status() {
 
         <View style={[s.divider, { backgroundColor: T.border }]} />
 
-        {recent.length > 0 ? (
+        {recent.length > 0 && (
           <>
             <Text style={[s.sectionLabel, { color: T.faint }]}>
               RECENT UPDATES
@@ -963,9 +1003,9 @@ export default function Status() {
               );
             })}
           </>
-        ) : null}
+        )}
 
-        {viewed.length > 0 ? (
+        {viewed.length > 0 && (
           <>
             <View style={[s.divider, { backgroundColor: T.border }]} />
             <Text style={[s.sectionLabel, { color: T.faint }]}>VIEWED</Text>
@@ -983,13 +1023,13 @@ export default function Status() {
               );
             })}
           </>
-        ) : null}
+        )}
 
-        {recent.length === 0 && viewed.length === 0 ? (
+        {recent.length === 0 && viewed.length === 0 && (
           <Text style={[s.emptyText, { color: T.faint }]}>
             No status updates yet
           </Text>
-        ) : null}
+        )}
       </ScrollView>
 
       {/* Text Status Modal */}
@@ -1177,7 +1217,7 @@ export default function Status() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Viewer */}
+      {/* Status Viewer */}
       <Modal
         visible={viewerVisible}
         animationType="fade"
@@ -1235,11 +1275,11 @@ export default function Status() {
                   style={s.viewerImage}
                   resizeMode="contain"
                 />
-                {currentStory?.content ? (
+                {currentStory?.content && (
                   <View style={s.captionWrap}>
                     <Text style={s.viewerCaption}>{currentStory.content}</Text>
                   </View>
-                ) : null}
+                )}
               </>
             ) : (
               <Text style={s.viewerText}>{currentStory?.content || ""}</Text>
@@ -1446,14 +1486,8 @@ const s = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
   },
-  imagePickerText: {
-    fontSize: 14,
-  },
-  previewImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
+  imagePickerText: { fontSize: 14 },
+  previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
   captionInput: {
     minHeight: 90,
     borderWidth: 1,
