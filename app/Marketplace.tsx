@@ -3,7 +3,9 @@
   Purpose: Unimaid Resources — Marketplace Screen (real DB + better UI)
 */
 
+import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
+import * as Linking from "expo-linking";
 import * as SecureStore from "expo-secure-store";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -26,6 +28,8 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 import { BottomNav } from "./Home";
 
 const API_BASE = "https://unresources.cravii.ng/api";
+const AGENT_PHONE = "09139293270";
+const AGENT_PHONE_INTL = "2349139293270";
 
 type ThemeMode = "dark" | "light" | "midnight" | "forest";
 
@@ -107,12 +111,28 @@ const THEME_LABELS: Record<ThemeMode, { icon: string; label: string }> = {
 
 const CATEGORIES = [
   "All",
-  "Books",
+  "Books( options might be invisible if you are on dark mode)",
   "Electronics",
+  "Phones & Accessories",
+  "Laptops & Computers",
   "Furniture",
+  "Hostel Items",
   "Clothing",
+  "Shoes",
+  "Bags",
+  "Beauty & Skincare",
+  "Watches & Jewelry",
+  "Food & Snacks",
+  "Kitchen Items",
+  "Sports & Fitness",
+  "School Materials",
+  "Project Materials",
+  "Games",
+  "Services",
   "Other",
 ];
+
+const ADD_CATEGORIES = CATEGORIES.filter((c) => c !== "All");
 
 type Listing = {
   id: number;
@@ -381,7 +401,7 @@ function TopBar({
       <View style={{ flex: 1, paddingRight: 10 }}>
         <Text style={[s.wordmark, { color: T.white }]}>
           {"UNIMAID "}
-          <Text style={{ color: T.purpleGlow }}>RESOURCES</Text>
+          <Text style={{ color: T.purpleGlow }}>RESOURCES MART</Text>
         </Text>
         <Text style={[s.wordmarkSub, { color: T.faint }]}>
           Marketplace for students
@@ -485,6 +505,7 @@ export default function Marketplace() {
   const [location, setLocation] = useState("");
   const [sellerPhone, setSellerPhone] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [agentCode, setAgentCode] = useState("");
   const [imageUri, setImageUri] = useState("");
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
@@ -568,44 +589,82 @@ export default function Marketplace() {
     setLocation("");
     setSellerPhone("");
     setWhatsapp("");
+    setAgentCode("");
     setImageUri("");
     setUploadedImageUrl("");
     setUploadingImage(false);
   };
 
-  const uploadImageWithXHR = (
-    fileUri: string,
-    ext: string,
-    mimeType: string,
-  ): Promise<any> => {
-    return new Promise((resolve, reject) => {
-      const form = new FormData();
+  const openAgentWhatsapp = async () => {
+    const username =
+      currentUser?.username ||
+      currentUser?.name ||
+      currentUser?.fullname ||
+      "user";
 
-      form.append("image", {
-        uri: fileUri,
-        name: `market_${Date.now()}.${ext}`,
-        type: mimeType,
-      } as any);
+    const message =
+      `Hi, I am ${username}. ` +
+      `I want to become a seller to list my items on Unimaid Resources. ` +
+      `I know I am going to pay 1000 for two weeks or 1800 for 1 month.`;
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", `${API_BASE}/upload_marketplace_image.php`);
+    const whatsappUrl = `https://wa.me/${AGENT_PHONE_INTL}?text=${encodeURIComponent(message)}`;
 
-      xhr.onload = () => {
-        try {
-          const response = JSON.parse(xhr.responseText);
-          resolve(response);
-        } catch (e) {
-          reject(new Error(xhr.responseText || "Invalid server response"));
-        }
-      };
-
-      xhr.onerror = () => {
-        reject(new Error("Network request failed"));
-      };
-
-      xhr.send(form);
-    });
+    try {
+      const supported = await Linking.canOpenURL(whatsappUrl);
+      if (supported) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        Alert.alert("WhatsApp not available", `Contact: ${AGENT_PHONE}`);
+      }
+    } catch {
+      Alert.alert("Error", `Contact on WhatsApp: ${AGENT_PHONE}`);
+    }
   };
+
+  const openBuyerWhatsapp = async (phone?: string, title?: string) => {
+    if (!phone) {
+      Alert.alert("Unavailable", "WhatsApp number not available");
+      return;
+    }
+
+    const clean = phone.replace(/\D/g, "");
+    const intl = clean.startsWith("0") ? `234${clean.slice(1)}` : clean;
+    const message = `Hello, I want to buy this item: ${title || "Marketplace item"}`;
+    const url = `https://wa.me/${intl}?text=${encodeURIComponent(message)}`;
+
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("Unavailable", "Could not open WhatsApp");
+      }
+    } catch {
+      Alert.alert("Error", "Could not open WhatsApp");
+    }
+  };
+
+  const callSeller = async (phone?: string) => {
+    if (!phone) {
+      Alert.alert("Unavailable", "Phone number not available");
+      return;
+    }
+
+    const clean = phone.replace(/\s+/g, "");
+    const url = `tel:${clean}`;
+
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("Unavailable", "Calling is not supported on this device");
+      }
+    } catch {
+      Alert.alert("Error", "Could not open dialer");
+    }
+  };
+
   const pickImage = async () => {
     try {
       const { status } =
@@ -700,6 +759,11 @@ export default function Marketplace() {
       return;
     }
 
+    if (!agentCode.trim()) {
+      Alert.alert("Error", "Agent code is required");
+      return;
+    }
+
     if (isNaN(Number(price)) || Number(price) <= 0) {
       Alert.alert("Error", "Enter a valid price");
       return;
@@ -718,6 +782,7 @@ export default function Marketplace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: currentUser.id,
+          agent_code: agentCode.trim(),
           title: title.trim(),
           description: description.trim(),
           price: Number(price),
@@ -767,7 +832,9 @@ export default function Marketplace() {
     <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
       <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
 
-      <TopBar theme={themeMode} onThemeChange={handleThemeChange} T={T} />
+      <View style={s.headerWrap}>
+        <TopBar theme={themeMode} onThemeChange={handleThemeChange} T={T} />
+      </View>
 
       <View style={s.searchRow}>
         <View
@@ -951,6 +1018,37 @@ export default function Marketplace() {
                         color: T.white,
                       },
                     ]}
+                    placeholder="Agent Code *"
+                    placeholderTextColor={T.faint}
+                    value={agentCode}
+                    onChangeText={setAgentCode}
+                    autoCapitalize="characters"
+                  />
+
+                  <TouchableOpacity
+                    style={[
+                      s.agentHelpBtn,
+                      {
+                        backgroundColor: T.purpleFaint,
+                        borderColor: T.purpleMid,
+                      },
+                    ]}
+                    onPress={openAgentWhatsapp}
+                  >
+                    <Text style={[s.agentHelpBtnText, { color: T.purpleGlow }]}>
+                      Get Agent Code • ₦1000 / 2 Weeks • ₦1800 / 1 Month
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TextInput
+                    style={[
+                      s.input,
+                      {
+                        backgroundColor: T.bg,
+                        borderColor: T.border,
+                        color: T.white,
+                      },
+                    ]}
                     placeholder="Title"
                     placeholderTextColor={T.faint}
                     value={title}
@@ -990,20 +1088,31 @@ export default function Marketplace() {
                     keyboardType="numeric"
                   />
 
-                  <TextInput
+                  <View
                     style={[
-                      s.input,
+                      s.pickerWrap,
                       {
                         backgroundColor: T.bg,
                         borderColor: T.border,
-                        color: T.white,
                       },
                     ]}
-                    placeholder="Category (Books, Electronics, Furniture...)"
-                    placeholderTextColor={T.faint}
-                    value={category}
-                    onChangeText={setCategory}
-                  />
+                  >
+                    <Picker
+                      selectedValue={category}
+                      onValueChange={(value) => setCategory(value)}
+                      style={[s.picker, { color: T.white }]}
+                      dropdownIconColor={T.whiteMuted}
+                    >
+                      {ADD_CATEGORIES.map((item) => (
+                        <Picker.Item
+                          key={item}
+                          label={item}
+                          value={item}
+                          color={themeMode === "light" ? "#1A1B2E" : "#FFFFFF"}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
 
                   <TextInput
                     style={[
@@ -1161,17 +1270,54 @@ export default function Marketplace() {
                       </Text>
                     )}
 
-                    <TouchableOpacity
-                      style={[
-                        s.btnSave,
-                        { backgroundColor: T.purpleMid, marginTop: 16 },
-                      ]}
-                      onPress={() => setDetailsVisible(false)}
-                    >
-                      <Text style={{ color: "#fff", fontWeight: "800" }}>
-                        Close
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={s.detailsActionRow}>
+                      <TouchableOpacity
+                        style={[
+                          s.detailsActionBtn,
+                          { backgroundColor: T.purpleMid },
+                        ]}
+                        onPress={() =>
+                          openBuyerWhatsapp(
+                            selectedItem.whatsapp || selectedItem.seller_phone,
+                            selectedItem.title,
+                          )
+                        }
+                      >
+                        <Text style={s.detailsActionText}>Buy Now</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          s.detailsActionBtn,
+                          {
+                            backgroundColor: T.card,
+                            borderColor: T.border,
+                            borderWidth: 1,
+                          },
+                        ]}
+                        onPress={() => callSeller(selectedItem.seller_phone)}
+                      >
+                        <Text style={[s.detailsActionText, { color: T.white }]}>
+                          Call
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[
+                          s.detailsActionBtnSmall,
+                          {
+                            backgroundColor: T.card,
+                            borderColor: T.border,
+                            borderWidth: 1,
+                          },
+                        ]}
+                        onPress={() => setDetailsVisible(false)}
+                      >
+                        <Text style={[s.detailsActionText, { color: T.white }]}>
+                          Close
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </ScrollView>
                 )}
               </View>
@@ -1186,14 +1332,21 @@ export default function Marketplace() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: {
+    flex: 1,
+    paddingTop: 24,
+  },
+
+  headerWrap: {
+    paddingTop: 12,
+  },
 
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 2,
+    paddingTop: 10,
     paddingBottom: 10,
     borderBottomWidth: 1,
   },
@@ -1399,6 +1552,28 @@ const s = StyleSheet.create({
     textAlignVertical: "top",
     paddingTop: 14,
   },
+  pickerWrap: {
+    borderWidth: 1,
+    borderRadius: 14,
+    marginBottom: 10,
+    overflow: "hidden",
+  },
+  picker: {
+    height: 54,
+  },
+  agentHelpBtn: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  agentHelpBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
+  },
   modalBtns: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -1443,5 +1618,31 @@ const s = StyleSheet.create({
   detailsMeta: {
     fontSize: 13,
     marginBottom: 6,
+  },
+  detailsActionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 16,
+  },
+  detailsActionBtn: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  detailsActionBtnSmall: {
+    flex: 0.8,
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  detailsActionText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 13,
   },
 });
