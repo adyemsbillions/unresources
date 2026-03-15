@@ -1,24 +1,29 @@
 /*
   File: app/people.tsx
   Purpose: Discover people and start chatting
-  Fix: Theme switching works — uses live T from THEMES[themeMode] state
+  Updates (March 2025):
+  - Theme switching works — uses live T from THEMES[themeMode] state
+  - Real avatar shown when available → fallback to colored initials
+  - User ID 1 (platform owner) shows crown icon + "Platform Owner" label + verified badge
+  - Search can show anyone (assuming backend sends full list or supports ?q param)
 */
 
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Animated,
-    Modal,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    TouchableWithoutFeedback,
-    View,
+  ActivityIndicator,
+  Animated,
+  Image,
+  Modal,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
@@ -26,7 +31,7 @@ import { BottomNav } from "./Home";
 
 const API_BASE = "https://unresources.cravii.ng/api";
 
-// ─── THEME SYSTEM (same as Home.tsx) ─────────────────────────────────────────
+// ─── THEME SYSTEM ─────────────────────────────────────────────────────────────
 
 type ThemeMode = "dark" | "light" | "midnight" | "forest";
 
@@ -143,9 +148,14 @@ function stringToColor(text: string) {
     "#0891B2",
   ];
   let hash = 0;
-  for (let i = 0; i < text.length; i++)
+  for (let i = 0; i < text.length; i++) {
     hash = text.charCodeAt(i) + ((hash << 5) - hash);
+  }
   return colors[Math.abs(hash) % colors.length];
+}
+
+function isPlatformOwner(id: number | string): boolean {
+  return Number(id) === 1;
 }
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
@@ -200,6 +210,29 @@ function IconSearch({ color, size = 17 }: { color: string; size?: number }) {
   );
 }
 
+function VerifiedBadge({ size = 16 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Circle cx="12" cy="12" r="10" fill="#FFD700" />
+      <Path
+        d="M9 12l2 2 4-4"
+        stroke="#000"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function CrownIcon({ size = 14 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="#FFD700">
+      <Path d="M12 2L2 7l3 9h14l3-9-10-5zM5 16l2-6 5 4 5-4 2 6z" />
+    </Svg>
+  );
+}
+
 // ─── THEME SWITCHER ──────────────────────────────────────────────────────────
 
 function ThemeSwitcher({
@@ -212,7 +245,7 @@ function ThemeSwitcher({
   T: Theme;
 }) {
   const [open, setOpen] = useState(false);
-  const anim = useRef(new Animated.Value(0)).current;
+  const anim = React.useRef(new Animated.Value(0)).current;
 
   const toggle = () => {
     const toValue = open ? 0 : 1;
@@ -297,7 +330,7 @@ function ThemeSwitcher({
   );
 }
 
-// ─── TOP BAR (local — mirrors Home's TopBar with theme switcher) ──────────────
+// ─── TOP BAR ─────────────────────────────────────────────────────────────────
 
 function TopBar({
   username,
@@ -321,14 +354,14 @@ function TopBar({
           <Text style={[s.wordmarkSub, { color: T.faint }]}>
             University of Maiduguri
           </Text>
-          {username ? (
+          {username && (
             <>
               <Text style={{ color: T.faint, fontSize: 11 }}>·</Text>
               <Text style={[s.usernameTag, { color: T.white }]}>
                 @{username}
               </Text>
             </>
-          ) : null}
+          )}
         </View>
       </View>
       <View style={{ flexDirection: "row", gap: 8 }}>
@@ -346,12 +379,11 @@ function TopBar({
   );
 }
 
-// ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function People() {
   const router = useRouter();
 
-  // themeMode drives T — changing it instantly re-renders the whole screen
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const T: Theme = THEMES[themeMode];
 
@@ -363,7 +395,6 @@ export default function People() {
   const [selectedUser, setSelectedUser] = useState<Person | null>(null);
   const [viewVisible, setViewVisible] = useState(false);
 
-  // Load saved theme on mount
   useEffect(() => {
     SecureStore.getItemAsync("theme")
       .then((saved) => {
@@ -374,7 +405,7 @@ export default function People() {
   }, []);
 
   const handleThemeChange = (t: ThemeMode) => {
-    setThemeMode(t); // instant re-render
+    setThemeMode(t);
     SecureStore.setItemAsync("theme", t).catch(() => {});
   };
 
@@ -388,13 +419,17 @@ export default function People() {
         setCurrentUser(me);
       }
 
-      const res = await fetch(`${API_BASE}/get_people.php`);
+      const url = query.trim()
+        ? `${API_BASE}/get_people.php?q=${encodeURIComponent(query.trim())}`
+        : `${API_BASE}/get_people.php`;
+
+      const res = await fetch(url);
       const text = await res.text();
       let data;
       try {
         data = JSON.parse(text);
-      } catch {
-        console.log("Invalid get_people response:", text);
+      } catch (e) {
+        console.log("Invalid JSON:", text);
         setError("Invalid server response");
         return;
       }
@@ -417,30 +452,18 @@ export default function People() {
     }
   };
 
+  // Load on mount + when search changes (debounced)
   useEffect(() => {
     loadPeople();
   }, []);
 
-  const filteredPeople = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return people;
-    return people.filter((p) => {
-      const name = (p.full_name || p.username || "").toLowerCase();
-      const username = (p.username || "").toLowerCase();
-      const department = (p.department || "").toLowerCase();
-      const level = (p.level || "").toLowerCase();
-      const faculty = (p.faculty || "").toLowerCase();
-      const matric = (p.matric_number || "").toLowerCase();
-      return (
-        name.includes(q) ||
-        username.includes(q) ||
-        department.includes(q) ||
-        level.includes(q) ||
-        faculty.includes(q) ||
-        matric.includes(q)
-      );
-    });
-  }, [people, query]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadPeople();
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const openChat = (user: Person) => {
     const name = user.full_name || user.username;
@@ -463,6 +486,7 @@ export default function People() {
     setSelectedUser(user);
     setViewVisible(true);
   };
+
   const closePopup = () => {
     setViewVisible(false);
     setSelectedUser(null);
@@ -514,11 +538,13 @@ export default function People() {
       >
         <Text style={[s.sectionLabel, { color: T.faint }]}>PEOPLE</Text>
 
-        {filteredPeople.length === 0 ? (
+        {people.length === 0 ? (
           <Text style={[s.emptyText, { color: T.faint }]}>No people found</Text>
         ) : (
-          filteredPeople.map((user) => {
+          people.map((user) => {
             const name = user.full_name || user.username;
+            const isOwner = isPlatformOwner(user.id);
+
             return (
               <TouchableOpacity
                 key={String(user.id)}
@@ -531,19 +557,66 @@ export default function People() {
                     s.avatar,
                     {
                       backgroundColor: user.color || stringToColor(name),
+                      borderWidth: isOwner ? 2 : 0,
+                      borderColor: isOwner ? "#FFD700" : "transparent",
                     },
                   ]}
                 >
-                  <Text style={s.avatarText}>
-                    {user.initials || getInitials(name)}
-                  </Text>
+                  {user.avatar ? (
+                    <Image
+                      source={{ uri: user.avatar }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 14,
+                      }}
+                    />
+                  ) : (
+                    <Text style={s.avatarText}>
+                      {user.initials || getInitials(name)}
+                    </Text>
+                  )}
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={[s.name, { color: T.white }]}>{name}</Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Text style={[s.name, { color: T.white }]}>{name}</Text>
+
+                    {isOwner && (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        <CrownIcon size={14} />
+                        <Text
+                          style={{
+                            color: "#FFD700",
+                            fontSize: 11,
+                            fontWeight: "600",
+                          }}
+                        >
+                          Admin
+                        </Text>
+                      </View>
+                    )}
+
+                    {isOwner && <VerifiedBadge size={16} />}
+                  </View>
+
                   <Text style={[s.username, { color: T.purpleGlow }]}>
                     @{user.username}
                   </Text>
+
                   {user.department || user.level ? (
                     <Text
                       style={[s.meta, { color: T.faint }]}
@@ -588,6 +661,8 @@ export default function People() {
                   (() => {
                     const name =
                       selectedUser.full_name || selectedUser.username;
+                    const isOwner = isPlatformOwner(selectedUser.id);
+
                     return (
                       <>
                         <View
@@ -596,28 +671,70 @@ export default function People() {
                             {
                               backgroundColor:
                                 selectedUser.color || stringToColor(name),
+                              borderWidth: isOwner ? 3 : 0,
+                              borderColor: isOwner ? "#FFD700" : "transparent",
                             },
                           ]}
                         >
-                          <Text style={s.modalAvatarText}>
-                            {selectedUser.initials || getInitials(name)}
-                          </Text>
+                          {selectedUser.avatar ? (
+                            <Image
+                              source={{ uri: selectedUser.avatar }}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                borderRadius: 24,
+                              }}
+                            />
+                          ) : (
+                            <Text style={s.modalAvatarText}>
+                              {selectedUser.initials || getInitials(name)}
+                            </Text>
+                          )}
                         </View>
 
-                        <Text style={[s.modalName, { color: T.white }]}>
-                          {name}
-                        </Text>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 8,
+                          }}
+                        >
+                          <Text style={[s.modalName, { color: T.white }]}>
+                            {name}
+                          </Text>
+                          {isOwner && (
+                            <>
+                              <CrownIcon size={18} />
+                              <VerifiedBadge size={18} />
+                            </>
+                          )}
+                        </View>
+
                         <Text
                           style={[s.modalUsername, { color: T.purpleGlow }]}
                         >
                           @{selectedUser.username}
                         </Text>
 
-                        {selectedUser.matric_number ? (
+                        {isOwner && (
+                          <Text
+                            style={{
+                              color: "#FFD700",
+                              fontSize: 13,
+                              fontWeight: "600",
+                              marginTop: 4,
+                            }}
+                          >
+                            Platform Owner
+                          </Text>
+                        )}
+
+                        {selectedUser.matric_number && (
                           <Text style={[s.modalInfo, { color: T.whiteMuted }]}>
                             Matric Number: {selectedUser.matric_number}
                           </Text>
-                        ) : null}
+                        )}
 
                         {selectedUser.department || selectedUser.level ? (
                           <Text style={[s.modalInfo, { color: T.whiteMuted }]}>
@@ -627,23 +744,23 @@ export default function People() {
                           </Text>
                         ) : null}
 
-                        {selectedUser.faculty ? (
+                        {selectedUser.faculty && (
                           <Text style={[s.modalInfo, { color: T.whiteMuted }]}>
                             Faculty: {selectedUser.faculty}
                           </Text>
-                        ) : null}
+                        )}
 
-                        {selectedUser.status_text ? (
+                        {selectedUser.status_text && (
                           <Text style={[s.modalStatus, { color: T.white }]}>
                             {selectedUser.status_text}
                           </Text>
-                        ) : null}
+                        )}
 
-                        {selectedUser.bio ? (
+                        {selectedUser.bio && (
                           <Text style={[s.modalBio, { color: T.faint }]}>
                             {selectedUser.bio}
                           </Text>
-                        ) : null}
+                        )}
 
                         <View style={s.modalButtons}>
                           <TouchableOpacity
@@ -681,12 +798,12 @@ export default function People() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      <BottomNav active="chats" T={T} />
+      <BottomNav active="people" T={T} />
     </SafeAreaView>
   );
 }
 
-// ─── STYLES (layout only — zero hardcoded colors) ────────────────────────────
+// ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
@@ -777,8 +894,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
+    overflow: "hidden",
   },
-  avatarText: { color: "#fff", fontWeight: "800" },
+  avatarText: { color: "#fff", fontWeight: "800", fontSize: 18 },
   name: {
     fontSize: 15,
     fontWeight: "800",
@@ -815,6 +933,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 14,
+    overflow: "hidden",
   },
   modalAvatarText: { color: "#fff", fontSize: 26, fontWeight: "900" },
   modalName: {

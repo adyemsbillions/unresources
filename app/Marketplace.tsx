@@ -12,8 +12,10 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Image,
   Modal,
+  Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -30,6 +32,22 @@ import { BottomNav } from "./Home";
 const API_BASE = "https://unresources.cravii.ng/api";
 const AGENT_PHONE = "09139293270";
 const AGENT_PHONE_INTL = "2349139293270";
+
+// ─── Responsive helpers ────────────────────────────────────────────────────────
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+const isSmall = SCREEN_W < 360;
+const isMedium = SCREEN_W >= 360 && SCREEN_W < 480;
+const isLarge = SCREEN_W >= 480;
+
+/** Scale a base size linearly with screen width (clamped). */
+function rs(base: number, min?: number, max?: number): number {
+  const scaled = (SCREEN_W / 390) * base;
+  if (min !== undefined && scaled < min) return min;
+  if (max !== undefined && scaled > max) return max;
+  return Math.round(scaled);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 type ThemeMode = "dark" | "light" | "midnight" | "forest";
 
@@ -111,7 +129,7 @@ const THEME_LABELS: Record<ThemeMode, { icon: string; label: string }> = {
 
 const CATEGORIES = [
   "All",
-  "Books( options might be invisible if you are on dark mode)",
+  "Books",
   "Electronics",
   "Phones & Accessories",
   "Laptops & Computers",
@@ -159,7 +177,6 @@ function timeAgo(dateString: string) {
   const now = new Date().getTime();
   const then = new Date(dateString).getTime();
   const diff = Math.max(0, Math.floor((now - then) / 1000));
-
   if (diff < 60) return `${diff}s ago`;
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -328,7 +345,10 @@ function ThemeSwitcher({
         onPress={toggle}
         activeOpacity={0.75}
       >
-        <IconPalette color={open ? T.purpleGlow : T.whiteMuted} size={19} />
+        <IconPalette
+          color={open ? T.purpleGlow : T.whiteMuted}
+          size={rs(19, 16, 22)}
+        />
       </TouchableOpacity>
 
       {open && (
@@ -362,7 +382,7 @@ function ThemeSwitcher({
                 setOpen(false);
               }}
             >
-              <Text style={{ fontSize: 16, marginRight: 8 }}>
+              <Text style={{ fontSize: rs(15, 13, 17), marginRight: 8 }}>
                 {THEME_LABELS[t].icon}
               </Text>
               <Text
@@ -399,7 +419,11 @@ function TopBar({
   return (
     <View style={[s.topBar, { borderBottomColor: T.border }]}>
       <View style={{ flex: 1, paddingRight: 10 }}>
-        <Text style={[s.wordmark, { color: T.white }]}>
+        <Text
+          style={[s.wordmark, { color: T.white }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
           {"UNIMAID "}
           <Text style={{ color: T.purpleGlow }}>RESOURCES MART</Text>
         </Text>
@@ -415,7 +439,7 @@ function TopBar({
             { backgroundColor: T.card, borderColor: T.border },
           ]}
         >
-          <IconBell color={T.whiteMuted} size={19} />
+          <IconBell color={T.whiteMuted} size={rs(19, 16, 22)} />
         </TouchableOpacity>
       </View>
     </View>
@@ -431,50 +455,82 @@ function ListingCard({
   T: Theme;
   onPress: () => void;
 }) {
+  // Card image height scales with available column width
+  const cardImgHeight = rs(130, 100, 160);
+
   return (
     <TouchableOpacity
       style={[s.card, { backgroundColor: T.card, borderColor: T.border }]}
       activeOpacity={0.85}
       onPress={onPress}
     >
-      <View style={[s.cardImg, { backgroundColor: T.bgDeep }]}>
+      <View
+        style={[
+          s.cardImg,
+          { backgroundColor: T.bgDeep, height: cardImgHeight },
+        ]}
+      >
         {item.image_url ? (
           <Image source={{ uri: item.image_url }} style={s.cardImageReal} />
         ) : (
-          <Text style={s.cardEmoji}>🛍️</Text>
+          <Text style={[s.cardEmoji, { fontSize: rs(36, 28, 44) }]}>🛍️</Text>
         )}
 
         <TouchableOpacity style={s.heartBtn}>
-          <IconHeart color={T.faint} />
+          <IconHeart color={T.faint} size={rs(15, 12, 18)} />
         </TouchableOpacity>
 
         <View style={[s.catBadge, { backgroundColor: T.purpleFaint }]}>
-          <Text style={[s.catBadgeText, { color: T.purpleGlow }]}>
+          <Text
+            style={[s.catBadgeText, { color: T.purpleGlow }]}
+            numberOfLines={1}
+          >
             {item.category}
           </Text>
         </View>
       </View>
 
-      <View style={s.cardBody}>
-        <Text style={[s.cardTitle, { color: T.whiteSoft }]} numberOfLines={2}>
+      <View style={[s.cardBody, { padding: rs(10, 8, 14) }]}>
+        <Text
+          style={[
+            s.cardTitle,
+            { color: T.whiteSoft, fontSize: rs(13, 11, 15) },
+          ]}
+          numberOfLines={2}
+        >
           {item.title}
         </Text>
 
-        <Text style={[s.cardPrice, { color: T.purpleGlow }]}>
+        <Text
+          style={[
+            s.cardPrice,
+            { color: T.purpleGlow, fontSize: rs(15, 13, 17) },
+          ]}
+        >
           ₦{formatPrice(item.price)}
         </Text>
 
         {!!item.condition_label && (
-          <Text style={[s.cardMeta, { color: T.whiteMuted }]}>
+          <Text
+            style={[
+              s.cardMeta,
+              { color: T.whiteMuted, fontSize: rs(11, 10, 13) },
+            ]}
+          >
             {item.condition_label}
           </Text>
         )}
 
         <View style={s.cardFooter}>
-          <Text style={[s.cardSeller, { color: T.faint }]} numberOfLines={1}>
+          <Text
+            style={[s.cardSeller, { color: T.faint, fontSize: rs(11, 10, 13) }]}
+            numberOfLines={1}
+          >
             {item.seller_name || "Unknown seller"}
           </Text>
-          <Text style={[s.cardTime, { color: T.faint }]}>
+          <Text
+            style={[s.cardTime, { color: T.faint, fontSize: rs(10, 9, 12) }]}
+          >
             {timeAgo(item.created_at)}
           </Text>
         </View>
@@ -514,9 +570,8 @@ export default function Marketplace() {
   useEffect(() => {
     SecureStore.getItemAsync("theme")
       .then((saved) => {
-        if (saved && THEMES[saved as ThemeMode]) {
+        if (saved && THEMES[saved as ThemeMode])
           setThemeMode(saved as ThemeMode);
-        }
       })
       .catch(() => {});
   }, []);
@@ -528,17 +583,12 @@ export default function Marketplace() {
           (await SecureStore.getItemAsync("user")) ||
           (await SecureStore.getItemAsync("userData")) ||
           (await SecureStore.getItemAsync("currentUser"));
-
-        if (stored) {
-          setCurrentUser(JSON.parse(stored));
-        }
+        if (stored) setCurrentUser(JSON.parse(stored));
       } catch (err) {
         console.log("User load error:", err);
       }
-
       await loadItems();
     };
-
     init();
   }, []);
 
@@ -550,20 +600,11 @@ export default function Marketplace() {
   const loadItems = async () => {
     try {
       setLoading(true);
-
-      const url = `${API_BASE}/get_marketplace_items.php?q=${encodeURIComponent(
-        query,
-      )}&category=${encodeURIComponent(activeCategory)}`;
-
+      const url = `${API_BASE}/get_marketplace_items.php?q=${encodeURIComponent(query)}&category=${encodeURIComponent(activeCategory)}`;
       const res = await fetch(url);
       const text = await res.text();
       const data = JSON.parse(text);
-
-      if (data.status === "success") {
-        setItems(data.items || []);
-      } else {
-        setItems([]);
-      }
+      setItems(data.status === "success" ? data.items || [] : []);
     } catch (err) {
       console.log("Marketplace load error:", err);
       setItems([]);
@@ -576,7 +617,6 @@ export default function Marketplace() {
     const timer = setTimeout(() => {
       loadItems();
     }, 300);
-
     return () => clearTimeout(timer);
   }, [query, activeCategory]);
 
@@ -601,21 +641,15 @@ export default function Marketplace() {
       currentUser?.name ||
       currentUser?.fullname ||
       "user";
-
     const message =
       `Hi, I am ${username}. ` +
       `I want to become a seller to list my items on Unimaid Resources. ` +
       `I know I am going to pay 1000 for two weeks or 1800 for 1 month.`;
-
     const whatsappUrl = `https://wa.me/${AGENT_PHONE_INTL}?text=${encodeURIComponent(message)}`;
-
     try {
       const supported = await Linking.canOpenURL(whatsappUrl);
-      if (supported) {
-        await Linking.openURL(whatsappUrl);
-      } else {
-        Alert.alert("WhatsApp not available", `Contact: ${AGENT_PHONE}`);
-      }
+      if (supported) await Linking.openURL(whatsappUrl);
+      else Alert.alert("WhatsApp not available", `Contact: ${AGENT_PHONE}`);
     } catch {
       Alert.alert("Error", `Contact on WhatsApp: ${AGENT_PHONE}`);
     }
@@ -626,19 +660,14 @@ export default function Marketplace() {
       Alert.alert("Unavailable", "WhatsApp number not available");
       return;
     }
-
     const clean = phone.replace(/\D/g, "");
     const intl = clean.startsWith("0") ? `234${clean.slice(1)}` : clean;
     const message = `Hello, I want to buy this item: ${title || "Marketplace item"}`;
     const url = `https://wa.me/${intl}?text=${encodeURIComponent(message)}`;
-
     try {
       const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
-        Alert.alert("Unavailable", "Could not open WhatsApp");
-      }
+      if (supported) await Linking.openURL(url);
+      else Alert.alert("Unavailable", "Could not open WhatsApp");
     } catch {
       Alert.alert("Error", "Could not open WhatsApp");
     }
@@ -649,17 +678,12 @@ export default function Marketplace() {
       Alert.alert("Unavailable", "Phone number not available");
       return;
     }
-
-    const clean = phone.replace(/\s+/g, "");
-    const url = `tel:${clean}`;
-
+    const url = `tel:${phone.replace(/\s+/g, "")}`;
     try {
       const supported = await Linking.canOpenURL(url);
-      if (supported) {
-        await Linking.openURL(url);
-      } else {
+      if (supported) await Linking.openURL(url);
+      else
         Alert.alert("Unavailable", "Calling is not supported on this device");
-      }
     } catch {
       Alert.alert("Error", "Could not open dialer");
     }
@@ -669,7 +693,6 @@ export default function Marketplace() {
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (status !== "granted") {
         Alert.alert(
           "Permission required",
@@ -677,7 +700,6 @@ export default function Marketplace() {
         );
         return;
       }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.7,
@@ -685,7 +707,6 @@ export default function Marketplace() {
         aspect: [1, 1],
         base64: true,
       });
-
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
@@ -702,11 +723,9 @@ export default function Marketplace() {
         asset.fileName ||
         asset.uri.split("/").pop() ||
         `market_${Date.now()}.jpg`;
-
       const cleanName = originalName.split("?")[0];
       const match = /\.(jpg|jpeg|png|gif|webp)$/i.exec(cleanName);
       const ext = match ? match[1].toLowerCase() : "jpg";
-
       let mimeType = "image/jpeg";
       if (ext === "png") mimeType = "image/png";
       if (ext === "gif") mimeType = "image/gif";
@@ -716,9 +735,7 @@ export default function Marketplace() {
         `${API_BASE}/upload_marketplace_image_base64.php`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             image: asset.base64,
             mimeType,
@@ -726,10 +743,7 @@ export default function Marketplace() {
           }),
         },
       );
-
       const text = await res.text();
-      console.log("Marketplace base64 upload raw:", text);
-
       const data = JSON.parse(text);
 
       if (data.success && data.imageUrl) {
@@ -740,7 +754,6 @@ export default function Marketplace() {
         Alert.alert("Upload failed", data.message || "Could not upload image");
       }
     } catch (err: any) {
-      console.log("Marketplace image upload error:", err);
       setUploadedImageUrl("");
       Alert.alert("Error", err?.message || "Failed to upload image");
     } finally {
@@ -753,22 +766,18 @@ export default function Marketplace() {
       Alert.alert("Error", "No logged-in user found");
       return;
     }
-
     if (!title.trim() || !price.trim()) {
       Alert.alert("Error", "Title and price are required");
       return;
     }
-
     if (!agentCode.trim()) {
       Alert.alert("Error", "Agent code is required");
       return;
     }
-
     if (isNaN(Number(price)) || Number(price) <= 0) {
       Alert.alert("Error", "Enter a valid price");
       return;
     }
-
     if (uploadingImage) {
       Alert.alert("Please wait", "Image is still uploading");
       return;
@@ -776,7 +785,6 @@ export default function Marketplace() {
 
     try {
       setSaving(true);
-
       const res = await fetch(`${API_BASE}/add_marketplace_item.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -799,12 +807,8 @@ export default function Marketplace() {
           whatsapp: whatsapp.trim(),
         }),
       });
-
       const text = await res.text();
-      console.log("Marketplace save raw:", text);
-
       const data = JSON.parse(text);
-
       if (data.status === "success") {
         setAddVisible(false);
         resetForm();
@@ -814,7 +818,6 @@ export default function Marketplace() {
         Alert.alert("Error", data.message || "Failed to add listing");
       }
     } catch (err) {
-      console.log("Marketplace save error:", err);
       Alert.alert("Error", "Network error");
     } finally {
       setSaving(false);
@@ -828,6 +831,15 @@ export default function Marketplace() {
     pairs.push(filtered.slice(i, i + 2));
   }
 
+  // ── shared input style ──────────────────────────────────────────────────────
+  const inputStyle = (T: Theme) => ({
+    backgroundColor: T.bg,
+    borderColor: T.border,
+    color: T.white,
+    height: rs(48, 42, 54),
+    fontSize: rs(14, 12, 16),
+  });
+
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
       <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
@@ -836,6 +848,7 @@ export default function Marketplace() {
         <TopBar theme={themeMode} onThemeChange={handleThemeChange} T={T} />
       </View>
 
+      {/* Search row */}
       <View style={s.searchRow}>
         <View
           style={[
@@ -843,9 +856,12 @@ export default function Marketplace() {
             { backgroundColor: T.card, borderColor: T.border },
           ]}
         >
-          <IconSearch color={T.faint} />
+          <IconSearch color={T.faint} size={rs(17, 15, 20)} />
           <TextInput
-            style={[s.searchInput, { color: T.white }]}
+            style={[
+              s.searchInput,
+              { color: T.white, fontSize: rs(14, 12, 16) },
+            ]}
             placeholder="Search listings..."
             placeholderTextColor={T.faint}
             value={query}
@@ -859,15 +875,16 @@ export default function Marketplace() {
             { backgroundColor: T.purpleFaint, borderColor: T.purpleMid },
           ]}
         >
-          <IconFilter color={T.purpleGlow} />
+          <IconFilter color={T.purpleGlow} size={rs(15, 13, 18)} />
         </TouchableOpacity>
       </View>
 
+      {/* Category pills */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         style={s.categoryScroll}
-        contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+        contentContainerStyle={{ paddingHorizontal: rs(20, 12, 24), gap: 8 }}
       >
         {CATEGORIES.map((cat) => {
           const isActive = activeCategory === cat;
@@ -889,6 +906,7 @@ export default function Marketplace() {
                   {
                     color: isActive ? T.purpleGlow : T.faint,
                     fontWeight: isActive ? "700" : "600",
+                    fontSize: rs(13, 11, 15),
                   },
                 ]}
               >
@@ -899,11 +917,24 @@ export default function Marketplace() {
         })}
       </ScrollView>
 
+      {/* Count row */}
       <View style={s.countRow}>
-        <Text style={[s.countText, { color: T.whiteMuted }]}>
+        <Text
+          style={[
+            s.countText,
+            { color: T.whiteMuted, fontSize: rs(12, 11, 14) },
+          ]}
+        >
           {filtered.length} listings
         </Text>
-        <Text style={[s.sortText, { color: T.purpleGlow }]}>Newest first</Text>
+        <Text
+          style={[
+            s.sortText,
+            { color: T.purpleGlow, fontSize: rs(12, 11, 14) },
+          ]}
+        >
+          Newest first
+        </Text>
       </View>
 
       {loading ? (
@@ -915,12 +946,23 @@ export default function Marketplace() {
       ) : (
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
           {pairs.length === 0 ? (
-            <Text style={[s.emptyText, { color: T.faint }]}>
+            <Text
+              style={[
+                s.emptyText,
+                { color: T.faint, fontSize: rs(14, 13, 16) },
+              ]}
+            >
               No marketplace items yet
             </Text>
           ) : (
             pairs.map((pair, i) => (
-              <View key={i} style={s.gridRow}>
+              <View
+                key={i}
+                style={[
+                  s.gridRow,
+                  { paddingHorizontal: rs(14, 10, 18), gap: rs(10, 8, 14) },
+                ]}
+              >
                 {pair.map((item) => (
                   <ListingCard
                     key={item.id}
@@ -936,14 +978,20 @@ export default function Marketplace() {
               </View>
             ))
           )}
-          <View style={{ height: 90 }} />
+          <View style={{ height: rs(100, 90, 110) }} />
         </ScrollView>
       )}
 
+      {/* FAB */}
       <TouchableOpacity
         style={[
           s.fab,
-          { backgroundColor: T.purpleMid, shadowColor: T.purpleMid },
+          {
+            backgroundColor: T.purpleMid,
+            shadowColor: T.purpleMid,
+            bottom: rs(80, 72, 92),
+            right: rs(20, 14, 26),
+          },
         ]}
         activeOpacity={0.85}
         onPress={() => {
@@ -951,9 +999,10 @@ export default function Marketplace() {
           setAddVisible(true);
         }}
       >
-        <IconPlus color="#fff" />
+        <IconPlus color="#fff" size={rs(20, 18, 24)} />
       </TouchableOpacity>
 
+      {/* ── Add Listing Modal ─────────────────────────────────────────────── */}
       <Modal
         transparent
         visible={addVisible}
@@ -966,18 +1015,38 @@ export default function Marketplace() {
               <View
                 style={[
                   s.modalCard,
-                  { backgroundColor: T.card, borderColor: T.border },
+                  {
+                    backgroundColor: T.card,
+                    borderColor: T.border,
+                    // On wider screens, cap and centre the modal
+                    maxWidth: Math.min(SCREEN_W - 36, 520),
+                    alignSelf: "center",
+                    width: "100%",
+                  },
                 ]}
               >
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <Text style={[s.modalTitle, { color: T.white }]}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <Text
+                    style={[
+                      s.modalTitle,
+                      { color: T.white, fontSize: rs(20, 17, 24) },
+                    ]}
+                  >
                     Add Listing
                   </Text>
 
+                  {/* Image picker */}
                   <TouchableOpacity
                     style={[
                       s.imagePicker,
-                      { backgroundColor: T.bgDeep, borderColor: T.border },
+                      {
+                        backgroundColor: T.bgDeep,
+                        borderColor: T.border,
+                        height: rs(180, 140, 220),
+                      },
                     ]}
                     onPress={pickImage}
                     disabled={uploadingImage}
@@ -988,7 +1057,12 @@ export default function Marketplace() {
                         style={s.previewImage}
                       />
                     ) : (
-                      <Text style={[s.imagePickerText, { color: T.faint }]}>
+                      <Text
+                        style={[
+                          s.imagePickerText,
+                          { color: T.faint, fontSize: rs(14, 12, 16) },
+                        ]}
+                      >
                         Tap to upload product image
                       </Text>
                     )}
@@ -1001,7 +1075,7 @@ export default function Marketplace() {
                         style={{
                           color: T.whiteMuted,
                           marginTop: 8,
-                          fontSize: 13,
+                          fontSize: rs(13, 11, 15),
                         }}
                       >
                         Uploading image...
@@ -1010,14 +1084,7 @@ export default function Marketplace() {
                   )}
 
                   <TextInput
-                    style={[
-                      s.input,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
-                    ]}
+                    style={[s.input, inputStyle(T)]}
                     placeholder="Agent Code *"
                     placeholderTextColor={T.faint}
                     value={agentCode}
@@ -1035,35 +1102,29 @@ export default function Marketplace() {
                     ]}
                     onPress={openAgentWhatsapp}
                   >
-                    <Text style={[s.agentHelpBtnText, { color: T.purpleGlow }]}>
+                    <Text
+                      style={[
+                        s.agentHelpBtnText,
+                        { color: T.purpleGlow, fontSize: rs(13, 11, 15) },
+                      ]}
+                    >
                       Get Agent Code • ₦1000 / 2 Weeks • ₦1800 / 1 Month
                     </Text>
                   </TouchableOpacity>
 
                   <TextInput
-                    style={[
-                      s.input,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
-                    ]}
+                    style={[s.input, inputStyle(T)]}
                     placeholder="Title"
                     placeholderTextColor={T.faint}
                     value={title}
                     onChangeText={setTitle}
                   />
-
                   <TextInput
                     style={[
                       s.input,
                       s.textarea,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
+                      inputStyle(T),
+                      { height: rs(100, 80, 120) },
                     ]}
                     placeholder="Description"
                     placeholderTextColor={T.faint}
@@ -1071,16 +1132,8 @@ export default function Marketplace() {
                     onChangeText={setDescription}
                     multiline
                   />
-
                   <TextInput
-                    style={[
-                      s.input,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
-                    ]}
+                    style={[s.input, inputStyle(T)]}
                     placeholder="Price"
                     placeholderTextColor={T.faint}
                     value={price}
@@ -1091,16 +1144,16 @@ export default function Marketplace() {
                   <View
                     style={[
                       s.pickerWrap,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                      },
+                      { backgroundColor: T.bg, borderColor: T.border },
                     ]}
                   >
                     <Picker
                       selectedValue={category}
                       onValueChange={(value) => setCategory(value)}
-                      style={[s.picker, { color: T.white }]}
+                      style={[
+                        s.picker,
+                        { color: T.white, height: rs(54, 46, 60) },
+                      ]}
                       dropdownIconColor={T.whiteMuted}
                     >
                       {ADD_CATEGORIES.map((item) => (
@@ -1115,59 +1168,28 @@ export default function Marketplace() {
                   </View>
 
                   <TextInput
-                    style={[
-                      s.input,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
-                    ]}
+                    style={[s.input, inputStyle(T)]}
                     placeholder="Condition"
                     placeholderTextColor={T.faint}
                     value={conditionLabel}
                     onChangeText={setConditionLabel}
                   />
-
                   <TextInput
-                    style={[
-                      s.input,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
-                    ]}
+                    style={[s.input, inputStyle(T)]}
                     placeholder="Location"
                     placeholderTextColor={T.faint}
                     value={location}
                     onChangeText={setLocation}
                   />
-
                   <TextInput
-                    style={[
-                      s.input,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
-                    ]}
+                    style={[s.input, inputStyle(T)]}
                     placeholder="Phone"
                     placeholderTextColor={T.faint}
                     value={sellerPhone}
                     onChangeText={setSellerPhone}
                   />
-
                   <TextInput
-                    style={[
-                      s.input,
-                      {
-                        backgroundColor: T.bg,
-                        borderColor: T.border,
-                        color: T.white,
-                      },
-                    ]}
+                    style={[s.input, inputStyle(T)]}
                     placeholder="WhatsApp"
                     placeholderTextColor={T.faint}
                     value={whatsapp}
@@ -1176,19 +1198,41 @@ export default function Marketplace() {
 
                   <View style={s.modalBtns}>
                     <TouchableOpacity
-                      style={[s.btnCancel, { borderColor: T.border }]}
+                      style={[
+                        s.btnCancel,
+                        {
+                          borderColor: T.border,
+                          paddingVertical: rs(12, 10, 14),
+                        },
+                      ]}
                       onPress={() => setAddVisible(false)}
                       disabled={saving || uploadingImage}
                     >
-                      <Text style={{ color: T.white }}>Cancel</Text>
+                      <Text
+                        style={{ color: T.white, fontSize: rs(14, 13, 16) }}
+                      >
+                        Cancel
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
-                      style={[s.btnSave, { backgroundColor: T.purpleMid }]}
+                      style={[
+                        s.btnSave,
+                        {
+                          backgroundColor: T.purpleMid,
+                          paddingVertical: rs(12, 10, 14),
+                        },
+                      ]}
                       onPress={saveItem}
                       disabled={saving || uploadingImage}
                     >
-                      <Text style={{ color: "#fff", fontWeight: "800" }}>
+                      <Text
+                        style={{
+                          color: "#fff",
+                          fontWeight: "800",
+                          fontSize: rs(14, 13, 16),
+                        }}
+                      >
                         {uploadingImage
                           ? "Uploading image..."
                           : saving
@@ -1204,6 +1248,7 @@ export default function Marketplace() {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {/* ── Details Modal ─────────────────────────────────────────────────── */}
       <Modal
         transparent
         visible={detailsVisible}
@@ -1216,7 +1261,13 @@ export default function Marketplace() {
               <View
                 style={[
                   s.modalCard,
-                  { backgroundColor: T.card, borderColor: T.border },
+                  {
+                    backgroundColor: T.card,
+                    borderColor: T.border,
+                    maxWidth: Math.min(SCREEN_W - 36, 520),
+                    alignSelf: "center",
+                    width: "100%",
+                  },
                 ]}
               >
                 {selectedItem && (
@@ -1224,57 +1275,74 @@ export default function Marketplace() {
                     {selectedItem.image_url ? (
                       <Image
                         source={{ uri: selectedItem.image_url }}
-                        style={s.detailsImage}
+                        style={[s.detailsImage, { height: rs(220, 160, 280) }]}
                       />
                     ) : null}
 
-                    <Text style={[s.detailsTitle, { color: T.white }]}>
+                    <Text
+                      style={[
+                        s.detailsTitle,
+                        { color: T.white, fontSize: rs(22, 18, 26) },
+                      ]}
+                    >
                       {selectedItem.title}
                     </Text>
 
-                    <Text style={[s.detailsPrice, { color: T.purpleGlow }]}>
+                    <Text
+                      style={[
+                        s.detailsPrice,
+                        { color: T.purpleGlow, fontSize: rs(18, 15, 22) },
+                      ]}
+                    >
                       ₦{formatPrice(selectedItem.price)}
                     </Text>
 
                     {!!selectedItem.description && (
-                      <Text style={[s.detailsText, { color: T.whiteMuted }]}>
+                      <Text
+                        style={[
+                          s.detailsText,
+                          { color: T.whiteMuted, fontSize: rs(14, 12, 16) },
+                        ]}
+                      >
                         {selectedItem.description}
                       </Text>
                     )}
 
-                    <Text style={[s.detailsMeta, { color: T.faint }]}>
-                      Seller: {selectedItem.seller_name || "Unknown"}
-                    </Text>
-
-                    {!!selectedItem.location && (
-                      <Text style={[s.detailsMeta, { color: T.faint }]}>
-                        Location: {selectedItem.location}
-                      </Text>
+                    {[
+                      {
+                        label: "Seller",
+                        value: selectedItem.seller_name || "Unknown",
+                      },
+                      { label: "Location", value: selectedItem.location },
+                      {
+                        label: "Condition",
+                        value: selectedItem.condition_label,
+                      },
+                      { label: "Phone", value: selectedItem.seller_phone },
+                      { label: "WhatsApp", value: selectedItem.whatsapp },
+                    ].map(
+                      ({ label, value }) =>
+                        !!value && (
+                          <Text
+                            key={label}
+                            style={[
+                              s.detailsMeta,
+                              { color: T.faint, fontSize: rs(13, 12, 15) },
+                            ]}
+                          >
+                            {label}: {value}
+                          </Text>
+                        ),
                     )}
 
-                    {!!selectedItem.condition_label && (
-                      <Text style={[s.detailsMeta, { color: T.faint }]}>
-                        Condition: {selectedItem.condition_label}
-                      </Text>
-                    )}
-
-                    {!!selectedItem.seller_phone && (
-                      <Text style={[s.detailsMeta, { color: T.faint }]}>
-                        Phone: {selectedItem.seller_phone}
-                      </Text>
-                    )}
-
-                    {!!selectedItem.whatsapp && (
-                      <Text style={[s.detailsMeta, { color: T.faint }]}>
-                        WhatsApp: {selectedItem.whatsapp}
-                      </Text>
-                    )}
-
-                    <View style={s.detailsActionRow}>
+                    <View style={[s.detailsActionRow, { gap: rs(8, 6, 12) }]}>
                       <TouchableOpacity
                         style={[
                           s.detailsActionBtn,
-                          { backgroundColor: T.purpleMid },
+                          {
+                            backgroundColor: T.purpleMid,
+                            minHeight: rs(46, 40, 52),
+                          },
                         ]}
                         onPress={() =>
                           openBuyerWhatsapp(
@@ -1283,7 +1351,14 @@ export default function Marketplace() {
                           )
                         }
                       >
-                        <Text style={s.detailsActionText}>Buy Now</Text>
+                        <Text
+                          style={[
+                            s.detailsActionText,
+                            { fontSize: rs(13, 12, 15) },
+                          ]}
+                        >
+                          Buy Now
+                        </Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity
@@ -1293,11 +1368,17 @@ export default function Marketplace() {
                             backgroundColor: T.card,
                             borderColor: T.border,
                             borderWidth: 1,
+                            minHeight: rs(46, 40, 52),
                           },
                         ]}
                         onPress={() => callSeller(selectedItem.seller_phone)}
                       >
-                        <Text style={[s.detailsActionText, { color: T.white }]}>
+                        <Text
+                          style={[
+                            s.detailsActionText,
+                            { color: T.white, fontSize: rs(13, 12, 15) },
+                          ]}
+                        >
                           Call
                         </Text>
                       </TouchableOpacity>
@@ -1309,11 +1390,17 @@ export default function Marketplace() {
                             backgroundColor: T.card,
                             borderColor: T.border,
                             borderWidth: 1,
+                            minHeight: rs(46, 40, 52),
                           },
                         ]}
                         onPress={() => setDetailsVisible(false)}
                       >
-                        <Text style={[s.detailsActionText, { color: T.white }]}>
+                        <Text
+                          style={[
+                            s.detailsActionText,
+                            { color: T.white, fontSize: rs(13, 12, 15) },
+                          ]}
+                        >
                           Close
                         </Text>
                       </TouchableOpacity>
@@ -1334,37 +1421,36 @@ export default function Marketplace() {
 const s = StyleSheet.create({
   safe: {
     flex: 1,
-    paddingTop: 24,
+    paddingTop: Platform.OS === "android" ? 24 : 0,
   },
 
-  headerWrap: {
-    paddingTop: 12,
-  },
+  headerWrap: { paddingTop: 12 },
 
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingHorizontal: rs(20, 14, 28),
+    paddingVertical: rs(10, 8, 14),
     borderBottomWidth: 1,
   },
-  wordmark: { fontSize: 21, fontWeight: "900", letterSpacing: 0.6 },
-  wordmarkSub: { fontSize: 11, marginTop: 2, letterSpacing: 0.4 },
+  wordmark: { fontSize: rs(21, 16, 24), fontWeight: "900", letterSpacing: 0.6 },
+  wordmarkSub: { fontSize: rs(11, 10, 13), marginTop: 2, letterSpacing: 0.4 },
+
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
+    width: rs(40, 34, 46),
+    height: rs(40, 34, 46),
+    borderRadius: rs(13, 10, 15),
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
+
   themeDropdown: {
     position: "absolute",
-    top: 48,
+    top: rs(48, 42, 54),
     right: 0,
-    width: 150,
+    width: rs(150, 130, 170),
     borderRadius: 14,
     borderWidth: 1,
     zIndex: 999,
@@ -1378,125 +1464,110 @@ const s = StyleSheet.create({
   themeOption: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: rs(14, 10, 18),
+    paddingVertical: rs(11, 9, 13),
   },
-  themeLabel: { fontSize: 14, flex: 1 },
+  themeLabel: { fontSize: rs(14, 12, 16), flex: 1 },
   themeDot: { width: 6, height: 6, borderRadius: 3 },
 
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    gap: rs(10, 8, 14),
+    paddingHorizontal: rs(20, 14, 26),
+    paddingVertical: rs(10, 8, 14),
   },
   searchBox: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: rs(10, 8, 12),
     borderWidth: 1,
     borderRadius: 14,
-    paddingHorizontal: 14,
-    height: 44,
+    paddingHorizontal: rs(14, 10, 18),
+    height: rs(44, 38, 50),
   },
-  searchInput: { flex: 1, fontSize: 14 },
+  searchInput: { flex: 1 },
   filterIconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
+    width: rs(44, 38, 50),
+    height: rs(44, 38, 50),
+    borderRadius: rs(13, 10, 15),
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  categoryScroll: { maxHeight: 46, marginBottom: 4 },
+  categoryScroll: { maxHeight: rs(46, 40, 52), marginBottom: 4 },
   catPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: rs(14, 10, 18),
+    paddingVertical: rs(7, 5, 10),
     borderRadius: 20,
     borderWidth: 1,
   },
-  catPillText: { fontSize: 13 },
+  catPillText: {},
 
   countRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingHorizontal: rs(20, 14, 26),
+    paddingVertical: rs(8, 6, 10),
   },
-  countText: { fontSize: 12, fontWeight: "600" },
-  sortText: { fontSize: 12, fontWeight: "600" },
+  countText: { fontWeight: "600" },
+  sortText: { fontWeight: "600" },
 
-  gridRow: {
-    flexDirection: "row",
-    paddingHorizontal: 14,
-    gap: 10,
-    marginBottom: 10,
+  gridRow: { flexDirection: "row", marginBottom: rs(10, 8, 14) },
+  card: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: rs(18, 14, 22),
+    overflow: "hidden",
+    // Prevent cards from being too narrow on very small phones
+    minWidth: 0,
   },
-  card: { flex: 1, borderWidth: 1, borderRadius: 18, overflow: "hidden" },
-  cardImg: { height: 120, alignItems: "center", justifyContent: "center" },
-  cardImageReal: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
-  cardEmoji: { fontSize: 40 },
+  cardImg: { alignItems: "center", justifyContent: "center" },
+  cardImageReal: { width: "100%", height: "100%", resizeMode: "cover" },
+  cardEmoji: {},
   heartBtn: {
     position: "absolute",
-    top: 8,
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    top: rs(8, 6, 10),
+    right: rs(8, 6, 10),
+    width: rs(28, 24, 34),
+    height: rs(28, 24, 34),
+    borderRadius: rs(9, 7, 11),
     backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
   },
   catBadge: {
     position: "absolute",
-    left: 8,
-    bottom: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    left: rs(8, 6, 10),
+    bottom: rs(8, 6, 10),
+    paddingHorizontal: rs(8, 6, 10),
+    paddingVertical: rs(4, 3, 5),
     borderRadius: 10,
+    maxWidth: "80%",
   },
-  catBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-  },
-  cardBody: { padding: 10 },
-  cardTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 4,
-    lineHeight: 17,
-  },
-  cardPrice: { fontSize: 15, fontWeight: "800", marginBottom: 4 },
-  cardMeta: { fontSize: 11, marginBottom: 4 },
+  catBadgeText: { fontSize: rs(10, 9, 12), fontWeight: "700" },
+  cardBody: {},
+  cardTitle: { fontWeight: "700", marginBottom: 4, lineHeight: rs(17, 14, 20) },
+  cardPrice: { fontWeight: "800", marginBottom: 4 },
+  cardMeta: { marginBottom: 4 },
   cardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  cardSeller: { fontSize: 11, fontStyle: "italic", flex: 1, marginRight: 6 },
-  cardTime: { fontSize: 10 },
+  cardSeller: { fontStyle: "italic", flex: 1, marginRight: 6 },
+  cardTime: {},
 
-  emptyText: {
-    textAlign: "center",
-    marginTop: 40,
-    fontSize: 14,
-  },
+  emptyText: { textAlign: "center", marginTop: 40 },
 
   fab: {
     position: "absolute",
-    bottom: 80,
-    right: 20,
-    width: 52,
-    height: 52,
-    borderRadius: 16,
+    width: rs(52, 46, 60),
+    height: rs(52, 46, 60),
+    borderRadius: rs(16, 12, 20),
     alignItems: "center",
     justifyContent: "center",
     elevation: 12,
@@ -1509,22 +1580,17 @@ const s = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: rs(18, 12, 24),
   },
   modalCard: {
     borderWidth: 1,
-    borderRadius: 20,
-    padding: 16,
+    borderRadius: rs(20, 16, 24),
+    padding: rs(16, 12, 22),
     maxHeight: "88%",
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    marginBottom: 12,
-  },
+  modalTitle: { fontWeight: "900", marginBottom: 12 },
   imagePicker: {
     width: "100%",
-    height: 180,
     borderWidth: 1,
     borderRadius: 16,
     alignItems: "center",
@@ -1532,23 +1598,15 @@ const s = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 12,
   },
-  imagePickerText: {
-    fontSize: 14,
-  },
-  previewImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
-  },
+  imagePickerText: {},
+  previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
   input: {
-    height: 48,
     borderWidth: 1,
     borderRadius: 14,
-    paddingHorizontal: 14,
+    paddingHorizontal: rs(14, 10, 18),
     marginBottom: 10,
   },
   textarea: {
-    height: 100,
     textAlignVertical: "top",
     paddingTop: 14,
   },
@@ -1558,22 +1616,16 @@ const s = StyleSheet.create({
     marginBottom: 10,
     overflow: "hidden",
   },
-  picker: {
-    height: 54,
-  },
+  picker: {},
   agentHelpBtn: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: rs(12, 10, 14),
+    paddingHorizontal: rs(14, 10, 18),
     alignItems: "center",
     marginBottom: 12,
   },
-  agentHelpBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-    textAlign: "center",
-  },
+  agentHelpBtnText: { fontWeight: "700", textAlign: "center" },
   modalBtns: {
     flexDirection: "row",
     justifyContent: "flex-end",
@@ -1582,51 +1634,28 @@ const s = StyleSheet.create({
   },
   btnCancel: {
     borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: rs(16, 12, 20),
     borderRadius: 12,
   },
   btnSave: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: rs(16, 12, 20),
     borderRadius: 12,
     alignItems: "center",
   },
 
   detailsImage: {
     width: "100%",
-    height: 220,
     borderRadius: 16,
     resizeMode: "cover",
     marginBottom: 12,
   },
-  detailsTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    marginBottom: 6,
-  },
-  detailsPrice: {
-    fontSize: 18,
-    fontWeight: "900",
-    marginBottom: 10,
-  },
-  detailsText: {
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: 10,
-  },
-  detailsMeta: {
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  detailsActionRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 16,
-  },
+  detailsTitle: { fontWeight: "900", marginBottom: 6 },
+  detailsPrice: { fontWeight: "900", marginBottom: 10 },
+  detailsText: { lineHeight: rs(22, 18, 26), marginBottom: 10 },
+  detailsMeta: { marginBottom: 6 },
+  detailsActionRow: { flexDirection: "row", marginTop: 16 },
   detailsActionBtn: {
     flex: 1,
-    minHeight: 46,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -1634,15 +1663,10 @@ const s = StyleSheet.create({
   },
   detailsActionBtnSmall: {
     flex: 0.8,
-    minHeight: 46,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 10,
   },
-  detailsActionText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 13,
-  },
+  detailsActionText: { color: "#fff", fontWeight: "800" },
 });

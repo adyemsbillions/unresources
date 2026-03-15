@@ -6,6 +6,7 @@
   - My Status card also uses real avatar if available
   - Gold verified badge next to name for user_id === 1 (demo/hardcoded)
   - Public view counts shown in list and viewer (from backend status_views table)
+  - User ID 1 (platform owner) is always pinned at the top with crown icon
 */
 
 import * as ImagePicker from "expo-image-picker";
@@ -124,7 +125,7 @@ type Story = {
   background_color?: string;
   created_at: string;
   seen?: boolean;
-  views?: number; // ← added for public view count
+  views?: number;
 };
 
 type StatusUser = {
@@ -157,8 +158,8 @@ function timeAgo(dateString: string) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function isVerified(userId: number | string): boolean {
-  return Number(userId) === 1; // demo: user 1 is verified (gold badge)
+function isPlatformOwner(userId: number | string): boolean {
+  return Number(userId) === 1;
 }
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
@@ -258,7 +259,6 @@ function IconBell({ color, size = 19 }: { color: string; size?: number }) {
   );
 }
 
-// Verified badge icon
 function VerifiedBadge({ size = 16, color = "#FFD700" }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
@@ -270,6 +270,15 @@ function VerifiedBadge({ size = 16, color = "#FFD700" }) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </Svg>
+  );
+}
+
+// Crown icon for platform owner
+function CrownIcon({ size = 14, color = "#FFD700" }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
+      <Path d="M12 2L2 7l3 9h14l3-9-10-5zM5 16l2-6 5 4 5-4 2 6z" />
     </Svg>
   );
 }
@@ -489,7 +498,8 @@ function StatusRow({
   onPress: () => void;
   T: Theme;
 }) {
-  const verified = isVerified(status.user_id);
+  const isOwner = isPlatformOwner(status.user_id);
+  const verified = isOwner; // owner has both crown + verification badge
   const latestStory = status.stories[0];
 
   return (
@@ -510,10 +520,31 @@ function StatusRow({
       </View>
 
       <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+          }}
+        >
           <Text style={[s.statusName, { color: T.whiteSoft }]}>
             {status.name}
           </Text>
+
+          {isOwner && (
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+            >
+              <CrownIcon size={14} />
+              <Text
+                style={{ color: "#FFD700", fontSize: 11, fontWeight: "600" }}
+              >
+                Admin
+              </Text>
+            </View>
+          )}
+
           {verified && <VerifiedBadge size={16} />}
         </View>
 
@@ -609,8 +640,11 @@ export default function Status() {
         `${API_BASE}/get_statuses.php?viewer_id=${encodeURIComponent(String(userId))}`,
       );
       const text = await res.text();
+      console.log("Statuses raw response:", text); // ← debug helper
       const data = JSON.parse(text);
-      if (data.status === "success") setStatuses(data.statuses || []);
+      if (data.status === "success") {
+        setStatuses(data.statuses || []);
+      }
     } catch (err) {
       console.log("Status load error:", err);
     }
