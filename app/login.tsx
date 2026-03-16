@@ -282,7 +282,7 @@ export default function Login() {
         </TouchableOpacity>
 
         <Text style={styles.footerTag}>
-          University of Maiduguri · Resources
+          University of Maiduguri · Resources since 2021
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
