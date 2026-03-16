@@ -11,6 +11,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  Image,
   Keyboard,
   Platform,
   ScrollView,
@@ -30,8 +31,6 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 const API_BASE = "https://unresources.cravii.ng/api";
 
 // ─── THEME DEFINITIONS ───────────────────────────────────────────────────────
-// Replaces the static C import from ./constants/theme.
-// All colors come from T (the live selected theme), never from a static import.
 
 type ThemeMode = "dark" | "light" | "midnight" | "forest";
 
@@ -125,6 +124,7 @@ type ChatItem = {
   name: string;
   initials: string;
   color: string;
+  avatar?: string;
   online: boolean;
   preview: string;
   time: string;
@@ -138,6 +138,7 @@ type SuggestionUser = {
   full_name?: string;
   initials?: string;
   color?: string;
+  avatar?: string;
   online?: boolean;
 };
 
@@ -168,7 +169,7 @@ function stringToColor(text: string) {
   return colors[Math.abs(hash) % colors.length];
 }
 
-// ─── ICONS (all accept explicit color prop — no static C references) ─────────
+// ─── ICONS ───────────────────────────────────────────────────────────────────
 
 function IconChat({ color, size = 21 }: { color: string; size?: number }) {
   return (
@@ -516,7 +517,6 @@ export function TopBar({
       </View>
 
       <View style={ss.topActions}>
-        {/* Theme switcher — replaces old search icon */}
         <ThemeSwitcher current={theme} onChange={onThemeChange} T={T} />
         <TouchableOpacity
           style={[
@@ -536,6 +536,7 @@ export function TopBar({
 function Avatar({
   initials,
   color,
+  avatar,
   size = 50,
   radius = 16,
   online = false,
@@ -543,6 +544,7 @@ function Avatar({
 }: {
   initials: string;
   color: string;
+  avatar?: string;
   size?: number;
   radius?: number;
   online?: boolean;
@@ -558,12 +560,24 @@ function Avatar({
             height: size,
             borderRadius: radius,
             backgroundColor: color,
+            overflow: "hidden",
           },
         ]}
       >
-        <Text style={[ss.avatarText, { fontSize: size * 0.33 }]}>
-          {initials}
-        </Text>
+        {avatar ? (
+          <Image
+            source={{ uri: avatar }}
+            style={{
+              width: "100%",
+              height: "100%",
+              borderRadius: radius,
+            }}
+          />
+        ) : (
+          <Text style={[ss.avatarText, { fontSize: size * 0.33 }]}>
+            {initials}
+          </Text>
+        )}
       </View>
       {online ? (
         <View
@@ -593,6 +607,7 @@ function ChatRow({
       <Avatar
         initials={chat.initials}
         color={chat.color}
+        avatar={chat.avatar}
         online={chat.online}
         T={T}
       />
@@ -634,22 +649,24 @@ function ChatRow({
 export default function Home() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
   const { user: passedUser } = useLocalSearchParams();
 
-  // themeMode drives T — changing it instantly re-renders everything
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const T: Theme = THEMES[themeMode];
 
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [peopleMap, setPeopleMap] = useState<Record<string, SuggestionUser>>(
+    {},
+  );
   const [suggestions, setSuggestions] = useState<SuggestionUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
 
-  // Load saved theme on mount
   useEffect(() => {
     SecureStore.getItemAsync("theme")
       .then((saved) => {
@@ -660,12 +677,54 @@ export default function Home() {
   }, []);
 
   const handleThemeChange = (t: ThemeMode) => {
-    setThemeMode(t); // instant re-render with new colors
+    setThemeMode(t);
     SecureStore.setItemAsync("theme", t).catch(() => {});
   };
 
-  const loadChatList = async (userId: string) => {
+  const loadPeopleMap = async () => {
     try {
+      const res = await fetch(`${API_BASE}/get_people.php`);
+      const text = await res.text();
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.log("Invalid get_people response:", text);
+        return {};
+      }
+
+      if (data.status === "success" && Array.isArray(data.users)) {
+        const map: Record<string, SuggestionUser> = {};
+        data.users.forEach((u: any) => {
+          map[String(u.id)] = {
+            id: u.id,
+            username: u.username,
+            full_name: u.full_name,
+            initials: u.initials,
+            color: u.color,
+            avatar: u.avatar,
+            online: false,
+          };
+        });
+        setPeopleMap(map);
+        return map;
+      }
+
+      return {};
+    } catch (err) {
+      console.error("People map error:", err);
+      return {};
+    }
+  };
+
+  const loadChatList = async (
+    userId: string,
+    mapArg?: Record<string, SuggestionUser>,
+  ) => {
+    try {
+      const people = mapArg || peopleMap;
+
       const res = await fetch(
         `${API_BASE}/get_chat_list.php?user_id=${encodeURIComponent(userId)}`,
       );
@@ -677,18 +736,29 @@ export default function Home() {
         console.log("Invalid get_chat_list response:", text);
         return;
       }
+
       if (data.status === "success") {
-        const mapped: ChatItem[] = (data.chats || []).map((chat: any) => ({
-          id: chat.id,
-          name: chat.name,
-          initials: chat.initials || getInitials(chat.name),
-          color: chat.color || stringToColor(chat.name),
-          online: !!chat.online,
-          preview: chat.preview || "",
-          time: chat.time || "",
-          unread: Number(chat.unread || 0),
-          pinned: false,
-        }));
+        const mapped: ChatItem[] = (data.chats || []).map((chat: any) => {
+          const matchedPerson = people[String(chat.id)];
+
+          return {
+            id: chat.id,
+            name: chat.name,
+            initials:
+              chat.initials ||
+              matchedPerson?.initials ||
+              getInitials(chat.name),
+            color:
+              chat.color || matchedPerson?.color || stringToColor(chat.name),
+            avatar: matchedPerson?.avatar || "",
+            online: !!chat.online,
+            preview: chat.preview || "",
+            time: chat.time || "",
+            unread: Number(chat.unread || 0),
+            pinned: false,
+          };
+        });
+
         setChats(mapped);
       }
     } catch (err) {
@@ -700,22 +770,30 @@ export default function Home() {
     const init = async () => {
       setLoading(true);
       setError(null);
+
       try {
         let userData: UserType | null = null;
-        if (passedUser && typeof passedUser === "string")
+
+        if (passedUser && typeof passedUser === "string") {
           userData = JSON.parse(passedUser);
+        }
+
         if (!userData) {
           const stored = await SecureStore.getItemAsync("user");
           if (stored) userData = JSON.parse(stored);
         }
+
         if (!userData?.id) {
           setError("No logged-in user found");
           setLoading(false);
           return;
         }
+
         setCurrentUser(userData);
         setCurrentUserId(String(userData.id));
-        await loadChatList(String(userData.id));
+
+        const map = await loadPeopleMap();
+        await loadChatList(String(userData.id), map);
       } catch (err) {
         setError("Failed to load chats");
         console.error(err);
@@ -723,14 +801,19 @@ export default function Home() {
         setLoading(false);
       }
     };
+
     init();
   }, [passedUser]);
 
   useEffect(() => {
     if (!currentUserId) return;
-    const interval = setInterval(() => loadChatList(currentUserId), 3000);
+
+    const interval = setInterval(() => {
+      loadChatList(currentUserId);
+    }, 3000);
+
     return () => clearInterval(interval);
-  }, [currentUserId]);
+  }, [currentUserId, peopleMap]);
 
   useEffect(() => {
     const searchUsers = async () => {
@@ -738,31 +821,48 @@ export default function Home() {
         setSuggestions([]);
         return;
       }
+
       try {
         const res = await fetch(
-          `${API_BASE}/search_users.php?q=${encodeURIComponent(query.trim())}`,
+          `${API_BASE}/get_people.php?q=${encodeURIComponent(query.trim())}`,
         );
         const text = await res.text();
-        console.log("SERVER RESPONSE:", text);
         let data;
+
         try {
           data = JSON.parse(text);
         } catch (e) {
           console.log("JSON ERROR:", e);
+          console.log("SERVER RESPONSE:", text);
+          setSuggestions([]);
           return;
         }
+
         if (data.status === "success") {
           setSuggestions(
-            (data.users || []).filter(
-              (u: SuggestionUser) => String(u.id) !== String(currentUserId),
-            ),
+            (data.users || [])
+              .filter(
+                (u: SuggestionUser) => String(u.id) !== String(currentUserId),
+              )
+              .map((u: any) => ({
+                id: u.id,
+                username: u.username,
+                full_name: u.full_name,
+                initials: u.initials,
+                color: u.color,
+                avatar: u.avatar,
+                online: false,
+              })),
           );
-        } else setSuggestions([]);
+        } else {
+          setSuggestions([]);
+        }
       } catch (err) {
         console.error("Search error:", err);
         setSuggestions([]);
       }
     };
+
     const timeout = setTimeout(searchUsers, 400);
     return () => clearTimeout(timeout);
   }, [query, currentUserId]);
@@ -794,6 +894,7 @@ export default function Home() {
 
   const startNewChat = (user: SuggestionUser) => {
     const name = user.full_name || user.username;
+
     router.push({
       pathname: "/ChatRoom",
       params: {
@@ -806,6 +907,7 @@ export default function Home() {
         isNew: "true",
       },
     });
+
     setQuery("");
     setSuggestions([]);
     Keyboard.dismiss();
@@ -854,7 +956,6 @@ export default function Home() {
         />
       </View>
 
-      {/* Filters */}
       <View style={ss.filterRow}>
         {["All", "Unread", "Groups"].map((t) => (
           <TouchableOpacity
@@ -883,7 +984,6 @@ export default function Home() {
         ))}
       </View>
 
-      {/* Search + suggestions */}
       <View style={{ position: "relative" }}>
         <View
           style={[
@@ -920,6 +1020,7 @@ export default function Home() {
                     <Avatar
                       initials={user.initials || getInitials(name)}
                       color={user.color || stringToColor(name)}
+                      avatar={user.avatar}
                       size={40}
                       radius={13}
                       online={!!user.online}
@@ -941,7 +1042,6 @@ export default function Home() {
         ) : null}
       </View>
 
-      {/* Chat list */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         style={{ flex: 1 }}
@@ -965,7 +1065,6 @@ export default function Home() {
         )}
       </ScrollView>
 
-      {/* FAB */}
       <TouchableOpacity
         style={[
           ss.fab,
@@ -982,7 +1081,7 @@ export default function Home() {
   );
 }
 
-// ─── STYLES (layout & spacing only — zero hardcoded colors) ──────────────────
+// ─── STYLES ──────────────────────────────────────────────────────────────────
 
 const ss = StyleSheet.create({
   safe: { flex: 1 },
