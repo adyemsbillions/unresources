@@ -6,7 +6,7 @@
   - Accent color now selectable from preset colors
   - Avatar now selected from device and uploaded to server
   - Removed Chats / Listings / Contacts stats
-  - Added Handouts / Quiz / Summaries stats
+  - Added Handouts / Quiz / Summaries stats (Handouts & Quizzes are now tappable buttons)
   - Added Request Verification menu item
 */
 
@@ -105,7 +105,7 @@ const THEMES: Record<ThemeMode, ReturnType<typeof buildTheme>> = {
     textMuted: "#6B6E94",
     textFaint: "#9B9EC0",
     accent: "#6244E5",
-    accentGlow: "#7C5CFC",
+    accentGlow: "#7C5FC",
     accentFaint: "rgba(98,68,229,0.08)",
     accentMid: "#5234C8",
     online: "#16B98C",
@@ -223,6 +223,7 @@ function IconEdit({ color = "#fff", size = 16 }) {
     </Svg>
   );
 }
+
 function IconChevron({ color = "#888", size = 17 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -236,6 +237,7 @@ function IconChevron({ color = "#888", size = 17 }) {
     </Svg>
   );
 }
+
 function IconLogout({ color = "#F87171", size = 18 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -263,6 +265,7 @@ function IconLogout({ color = "#F87171", size = 18 }) {
     </Svg>
   );
 }
+
 function IconBell({ color = "#888", size = 20 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -282,6 +285,7 @@ function IconBell({ color = "#888", size = 20 }) {
     </Svg>
   );
 }
+
 function IconPalette({ color = "#888", size = 20 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -297,6 +301,7 @@ function IconPalette({ color = "#888", size = 20 }) {
     </Svg>
   );
 }
+
 function IconX({ color = "#888", size = 16 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -321,6 +326,7 @@ function IconX({ color = "#888", size = 16 }) {
     </Svg>
   );
 }
+
 function IconCheck({ color = "#fff", size = 18 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -334,6 +340,7 @@ function IconCheck({ color = "#fff", size = 18 }) {
     </Svg>
   );
 }
+
 function IconChat({ color = "#fff", size = 22 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -347,6 +354,7 @@ function IconChat({ color = "#fff", size = 22 }) {
     </Svg>
   );
 }
+
 function IconStatus({ color = "#fff", size = 22 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -360,6 +368,7 @@ function IconStatus({ color = "#fff", size = 22 }) {
     </Svg>
   );
 }
+
 function IconMarket({ color = "#fff", size = 22 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -388,6 +397,7 @@ function IconMarket({ color = "#fff", size = 22 }) {
     </Svg>
   );
 }
+
 function IconProfile({ color = "#fff", size = 22 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -718,27 +728,31 @@ export default function Profile() {
     extension: string,
     mimeType: string,
   ) => {
-    const res = await fetch(`${API_BASE}/upload_profile_image_base64.php`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        image: imageBase64,
-        extension,
-        mimeType,
-      }),
-    });
+    try {
+      const res = await fetch(`${API_BASE}/upload_profile_image_base64.php`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          image: imageBase64,
+          extension,
+          mimeType,
+        }),
+      });
 
-    const text = await res.text();
-    console.log("Profile avatar upload raw:", text);
+      const text = await res.text();
+      const data = JSON.parse(text);
 
-    const data = JSON.parse(text);
-    if (data.success && data.imageUrl) {
-      return data.imageUrl as string;
+      if (data.success && data.imageUrl) {
+        return data.imageUrl as string;
+      }
+
+      throw new Error(data.message || "Avatar upload failed");
+    } catch (err: any) {
+      console.error("Avatar upload error:", err);
+      throw err;
     }
-
-    throw new Error(data.message || "Avatar upload failed");
   };
 
   const pickAvatar = async () => {
@@ -749,35 +763,28 @@ export default function Profile() {
       if (status !== "granted") {
         Alert.alert(
           "Permission required",
-          "Please allow photo library access to choose an avatar.",
+          "Please allow access to your photo library.",
         );
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.7,
         allowsEditing: true,
         aspect: [1, 1],
+        quality: 0.7,
         base64: true,
       });
 
-      if (result.canceled || !result.assets?.length) return;
+      if (result.canceled || !result.assets?.[0]?.base64) return;
 
       const asset = result.assets[0];
-
-      if (!asset.base64) {
-        Alert.alert("Error", "Could not read selected image.");
-        return;
-      }
-
       setUploadingAvatar(true);
 
       const originalName =
         asset.fileName ||
         asset.uri.split("/").pop() ||
         `avatar_${Date.now()}.jpg`;
-
       const cleanName = originalName.split("?")[0];
       const match = /\.(jpg|jpeg|png|gif|webp)$/i.exec(cleanName);
       const ext = match ? match[1].toLowerCase() : "jpg";
@@ -789,15 +796,10 @@ export default function Profile() {
 
       const uploadedUrl = await uploadAvatarBase64(asset.base64, ext, mimeType);
 
-      setEditForm((prev) => ({
-        ...prev,
-        avatar_url: uploadedUrl,
-      }));
-
-      Alert.alert("Success", "Avatar selected successfully.");
+      setEditForm((prev) => ({ ...prev, avatar_url: uploadedUrl }));
+      Alert.alert("Success", "Avatar updated successfully.");
     } catch (err: any) {
-      console.log("Profile avatar upload error:", err);
-      Alert.alert("Error", err?.message || "Failed to upload avatar.");
+      Alert.alert("Error", err.message || "Failed to upload avatar.");
     } finally {
       setUploadingAvatar(false);
     }
@@ -814,11 +816,11 @@ export default function Profile() {
     try {
       const body = {
         user_id: currentUser.id,
-        name: editForm.full_name,
-        bio: editForm.bio,
-        department: editForm.department,
-        level: editForm.level,
-        initials: editForm.initials,
+        name: editForm.full_name.trim(),
+        bio: editForm.bio.trim(),
+        department: editForm.department.trim(),
+        level: editForm.level.trim(),
+        initials: editForm.initials.trim().toUpperCase(),
         accent_color: editForm.color,
         profile_picture: editForm.avatar_url,
       };
@@ -832,7 +834,7 @@ export default function Profile() {
       const data = await res.json();
 
       if (data.status === "success") {
-        const updated = {
+        const updatedUser = {
           ...currentUser,
           full_name: body.name,
           bio: body.bio,
@@ -843,14 +845,15 @@ export default function Profile() {
           avatar_url: body.profile_picture,
         };
 
-        setCurrentUser(updated);
-        await SecureStore.setItemAsync("user", JSON.stringify(updated));
+        setCurrentUser(updatedUser);
+        await SecureStore.setItemAsync("user", JSON.stringify(updatedUser));
         setEditModalVisible(false);
+        Alert.alert("Success", "Profile updated successfully.");
       } else {
-        Alert.alert("Error", data.message || "Failed to update.");
+        Alert.alert("Error", data.message || "Failed to update profile.");
       }
-    } catch {
-      Alert.alert("Error", "Network error.");
+    } catch (err) {
+      Alert.alert("Error", "Network error. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -871,6 +874,10 @@ export default function Profile() {
       },
     ]);
   };
+
+  // Navigation handlers
+  const goToHandouts = () => router.push("/handouts");
+  const goToQuizzes = () => router.push("/quizzes");
 
   const name = currentUser?.full_name || currentUser?.username || "Guest";
   const handleText = currentUser?.username
@@ -939,11 +946,12 @@ export default function Profile() {
 
       <ScrollView
         contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom + 90, 100),
+          paddingBottom: Math.max(insets.bottom + 100, 120),
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Hero Card */}
         <View
           style={[
             s.heroCard,
@@ -1030,31 +1038,46 @@ export default function Profile() {
           </View>
         </View>
 
-        <View
-          style={[
-            s.statsCard,
-            { backgroundColor: C.card, borderColor: C.border },
-          ]}
-        >
-          {[
-            { val: "24", lbl: "Handouts" },
-            { val: "7", lbl: "Quiz" },
-            { val: "42", lbl: "Summaries" },
-          ].map((st, i, arr) => (
-            <React.Fragment key={st.lbl}>
-              <View style={s.statBox}>
-                <Text style={[s.statNum, { color: C.text }]}>{st.val}</Text>
-                <Text style={[s.statLabel, { color: C.textMuted }]}>
-                  {st.lbl}
-                </Text>
-              </View>
-              {i < arr.length - 1 && (
-                <View style={[s.statDivider, { backgroundColor: C.border }]} />
-              )}
-            </React.Fragment>
-          ))}
+        {/* Stats – now button-like */}
+        <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+          <View
+            style={[
+              s.statsContainer,
+              { backgroundColor: C.card, borderColor: C.border },
+            ]}
+          >
+            <TouchableOpacity
+              style={[s.statButton, { backgroundColor: C.accentFaint + "40" }]}
+              onPress={goToHandouts}
+              activeOpacity={0.8}
+            >
+              <Text style={[s.statNumber, { color: C.accentGlow }]}>24</Text>
+              <Text style={[s.statText, { color: C.textSoft }]}>Handouts</Text>
+            </TouchableOpacity>
+
+            <View style={[s.statSeparator, { backgroundColor: C.border }]} />
+
+            <TouchableOpacity
+              style={[s.statButton, { backgroundColor: C.accentFaint + "40" }]}
+              onPress={goToQuizzes}
+              activeOpacity={0.8}
+            >
+              <Text style={[s.statNumber, { color: C.accentGlow }]}>7</Text>
+              <Text style={[s.statText, { color: C.textSoft }]}>Quizzes</Text>
+            </TouchableOpacity>
+
+            <View style={[s.statSeparator, { backgroundColor: C.border }]} />
+
+            <View style={s.statButton}>
+              <Text style={[s.statNumber, { color: C.text }]}>42</Text>
+              <Text style={[s.statText, { color: C.textMuted }]}>
+                Summaries
+              </Text>
+            </View>
+          </View>
         </View>
 
+        {/* Toggle card */}
         <View
           style={[
             s.togglesCard,
@@ -1077,6 +1100,7 @@ export default function Profile() {
           </View>
         </View>
 
+        {/* Menu sections */}
         {MENU_SECTIONS.map((section, si) => (
           <View key={si} style={s.menuSection}>
             <Text style={[s.sectionLabel, { color: C.textFaint }]}>
@@ -1090,10 +1114,7 @@ export default function Profile() {
             >
               {section.items.map((item, ii) => (
                 <View key={ii}>
-                  <TouchableOpacity
-                    style={[s.menuItem, { backgroundColor: "transparent" }]}
-                    activeOpacity={0.72}
-                  >
+                  <TouchableOpacity style={s.menuItem} activeOpacity={0.72}>
                     <View style={[s.menuIconBox, { backgroundColor: item.bg }]}>
                       <Text style={s.menuEmoji}>{item.icon}</Text>
                     </View>
@@ -1113,6 +1134,7 @@ export default function Profile() {
           </View>
         ))}
 
+        {/* Logout */}
         <TouchableOpacity
           style={[
             s.logoutBtn,
@@ -1133,6 +1155,7 @@ export default function Profile() {
         </Text>
       </ScrollView>
 
+      {/* Edit Modal */}
       <Modal
         animationType="slide"
         transparent
@@ -1207,14 +1230,12 @@ export default function Profile() {
 
                   <View style={{ flex: 1 }}>
                     <Text style={[s.modalAvatarHint, { color: C.textMuted }]}>
-                      Preview of your profile
+                      Profile preview
                     </Text>
                     <Text
-                      style={[
-                        { color: C.textFaint, fontSize: 12, marginTop: 2 },
-                      ]}
+                      style={{ color: C.textFaint, fontSize: 12, marginTop: 2 }}
                     >
-                      Avatar and accent color update live
+                      Changes to avatar & color appear live
                     </Text>
                   </View>
                 </View>
@@ -1236,9 +1257,7 @@ export default function Profile() {
                     <IconEdit color={C.accentGlow} size={15} />
                   )}
                   <Text style={[s.avatarUploadText, { color: C.accentGlow }]}>
-                    {uploadingAvatar
-                      ? "Uploading Avatar..."
-                      : "Choose Avatar from Device"}
+                    {uploadingAvatar ? "Uploading..." : "Choose Avatar"}
                   </Text>
                 </TouchableOpacity>
 
@@ -1250,7 +1269,6 @@ export default function Profile() {
                   autoCapitalize="words"
                   C={C}
                 />
-
                 <FieldInput
                   label="Bio"
                   value={editForm.bio}
@@ -1259,7 +1277,6 @@ export default function Profile() {
                   multiline
                   C={C}
                 />
-
                 <FieldInput
                   label="Department"
                   value={editForm.department}
@@ -1268,7 +1285,6 @@ export default function Profile() {
                   autoCapitalize="words"
                   C={C}
                 />
-
                 <FieldInput
                   label="Level"
                   value={editForm.level}
@@ -1276,7 +1292,6 @@ export default function Profile() {
                   placeholder="e.g. 300L"
                   C={C}
                 />
-
                 <FieldInput
                   label="Initials (2 letters)"
                   value={editForm.initials}
@@ -1309,9 +1324,8 @@ export default function Profile() {
                           },
                         ]}
                         onPress={() => setEditForm({ ...editForm, color })}
-                        activeOpacity={0.85}
                       >
-                        {selected ? <IconCheck color="#fff" size={14} /> : null}
+                        {selected && <IconCheck color="#fff" size={14} />}
                       </TouchableOpacity>
                     );
                   })}
@@ -1336,7 +1350,6 @@ export default function Profile() {
                       {
                         backgroundColor: C.accentMid,
                         opacity: saving ? 0.7 : 1,
-                        shadowColor: C.accent,
                       },
                     ]}
                     onPress={handleSaveProfile}
@@ -1489,22 +1502,31 @@ const s = StyleSheet.create({
   },
   editProfileText: { fontWeight: "700", fontSize: 14 },
 
-  statsCard: {
+  // ─── Updated Stats Section ───────────────────────────────────────────────
+  statsContainer: {
     flexDirection: "row",
-    marginHorizontal: 16,
-    marginBottom: 10,
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 16,
     overflow: "hidden",
   },
-  statBox: { flex: 1, paddingVertical: 16, alignItems: "center" },
-  statDivider: { width: 1, marginVertical: 12 },
-  statNum: { fontSize: 22, fontWeight: "800" },
-  statLabel: {
-    fontSize: 11,
+  statButton: {
+    flex: 1,
+    paddingVertical: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statNumber: {
+    fontSize: 26,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+  statText: {
+    fontSize: 13,
     fontWeight: "600",
-    letterSpacing: 0.5,
-    marginTop: 2,
+  },
+  statSeparator: {
+    width: 1,
+    marginVertical: 12,
   },
 
   togglesCard: {
