@@ -967,7 +967,14 @@ export default function Home() {
                 borderColor: activeFilter === t ? T.purpleMid : T.border,
               },
             ]}
-            onPress={() => setActiveFilter(t)}
+            // ─── changed part ────────────────────────────────────────
+            onPress={() => {
+              if (t === "Groups") {
+                router.push("/groups");
+              } else {
+                setActiveFilter(t);
+              }
+            }}
           >
             <Text
               style={[
