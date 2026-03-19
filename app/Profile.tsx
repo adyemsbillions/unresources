@@ -1,13 +1,6 @@
 /*
   File: app/Profile.tsx
-  Purpose: Unimaid Resources — Profile Screen (Enhanced)
-  - Unified theme system (4 themes, synced with Home & ChatRoom)
-  - Better avatar hero, menu, and edit modal
-  - Accent color now selectable from preset colors
-  - Avatar now selected from device and uploaded to server
-  - Removed Chats / Listings / Contacts stats
-  - Added Handouts / Quiz / Summaries stats (Handouts & Quizzes are now tappable buttons)
-  - Added Request Verification menu item
+  Purpose: Unimaid Resources — Profile Screen (Cleaned up)
 */
 
 import * as ImagePicker from "expo-image-picker";
@@ -25,7 +18,6 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -39,7 +31,7 @@ import Svg, { Circle, Line, Path } from "react-native-svg";
 
 const API_BASE = "https://unresources.cravii.ng/api";
 
-// ─── THEME SYSTEM ────────────────────────────────────────────────────────────
+// ─── THEME SYSTEM ─────────────────────────────────────────
 
 type ThemeMode = "dark" | "light" | "midnight" | "forest";
 
@@ -105,7 +97,7 @@ const THEMES: Record<ThemeMode, ReturnType<typeof buildTheme>> = {
     textMuted: "#6B6E94",
     textFaint: "#9B9EC0",
     accent: "#6244E5",
-    accentGlow: "#7C5FC",
+    accentGlow: "#6244E5",
     accentFaint: "rgba(98,68,229,0.08)",
     accentMid: "#5234C8",
     online: "#16B98C",
@@ -184,7 +176,7 @@ const ACCENT_PRESETS = [
   "#F59E0B",
 ];
 
-// ─── TYPES ───────────────────────────────────────────────────────────────────
+// ─── TYPES ────────────────────────────────────────────────
 
 type UserType = {
   id?: number | string;
@@ -201,7 +193,7 @@ type UserType = {
 
 type ThemeType = ReturnType<typeof buildTheme>;
 
-// ─── ICONS ───────────────────────────────────────────────────────────────────
+// ─── ICONS ────────────────────────────────────────────────
 
 function IconEdit({ color = "#fff", size = 16 }) {
   return (
@@ -257,27 +249,6 @@ function IconLogout({ color = "#F87171", size = 18 }) {
       />
       <Path
         d="M21 12H9"
-        stroke={color}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
-  );
-}
-
-function IconBell({ color = "#888", size = 20 }) {
-  return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
-        stroke={color}
-        strokeWidth={1.8}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Path
-        d="M13.73 21a2 2 0 0 1-3.46 0"
         stroke={color}
         strokeWidth={1.8}
         strokeLinecap="round"
@@ -398,7 +369,7 @@ function IconMarket({ color = "#fff", size = 22 }) {
   );
 }
 
-function IconProfile({ color = "#fff", size = 22 }) {
+function IconProfileNav({ color = "#fff", size = 22 }) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Circle cx="12" cy="8" r="3.5" stroke={color} strokeWidth={1.8} />
@@ -412,7 +383,50 @@ function IconProfile({ color = "#fff", size = 22 }) {
   );
 }
 
-// ─── NAV ─────────────────────────────────────────────────────────────────────
+function IconShield({ color = "#888", size = 20 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function IconHelp({ color = "#888", size = 20 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Circle cx="12" cy="12" r="10" stroke={color} strokeWidth={1.8} />
+      <Path
+        d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+      />
+      <Circle cx="12" cy="17" r="0.8" fill={color} />
+    </Svg>
+  );
+}
+
+function IconStar({ color = "#888", size = 20 }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// ─── BOTTOM NAV ───────────────────────────────────────────
 
 const NAV_ITEMS = [
   { id: "chats", label: "Chats", route: "/Home" },
@@ -425,7 +439,7 @@ function NavIcon({ id, color }: { id: string; color: string }) {
   if (id === "chats") return <IconChat color={color} />;
   if (id === "status") return <IconStatus color={color} />;
   if (id === "marketplace") return <IconMarket color={color} />;
-  if (id === "profile") return <IconProfile color={color} />;
+  if (id === "profile") return <IconProfileNav color={color} />;
   return null;
 }
 
@@ -474,7 +488,7 @@ function BottomNav({ active, C }: { active: string; C: ThemeType }) {
   );
 }
 
-// ─── THEME SWITCHER ──────────────────────────────────────────────────────────
+// ─── THEME SWITCHER ───────────────────────────────────────
 
 function ThemeSwitcher({
   current,
@@ -566,36 +580,7 @@ function ThemeSwitcher({
   );
 }
 
-// ─── MENU DATA ───────────────────────────────────────────────────────────────
-
-const MENU_SECTIONS = [
-  {
-    title: "ACCOUNT",
-    items: [
-      { icon: "📢", label: "Announcements", bg: "#5b21b6" },
-      { icon: "🛍️", label: "My Listings", bg: "#0e7490" },
-      { icon: "✅", label: "Request Verification", bg: "#065f46" },
-      { icon: "🔔", label: "Notifications", bg: "#b45309" },
-    ],
-  },
-  {
-    title: "PREFERENCES",
-    items: [
-      { icon: "🔒", label: "Privacy & Security", bg: "#065f46" },
-      { icon: "🎨", label: "Appearance", bg: "#9d174d" },
-      { icon: "🌐", label: "Language", bg: "#1e3a5f" },
-    ],
-  },
-  {
-    title: "SUPPORT",
-    items: [
-      { icon: "❓", label: "Help & Support", bg: "#4c1d95" },
-      { icon: "⭐", label: "Rate the App", bg: "#78350f" },
-    ],
-  },
-];
-
-// ─── FIELD INPUT ─────────────────────────────────────────────────────────────
+// ─── FIELD INPUT ──────────────────────────────────────────
 
 function FieldInput({
   label,
@@ -617,7 +602,6 @@ function FieldInput({
   C: ThemeType;
 }) {
   const [focused, setFocused] = useState(false);
-
   return (
     <View style={{ marginBottom: 18 }}>
       <Text style={[s.modalLabel, { color: TC.textMuted }]}>{label}</Text>
@@ -646,7 +630,52 @@ function FieldInput({
   );
 }
 
-// ─── MAIN ────────────────────────────────────────────────────────────────────
+// ─── MENU DATA (cleaned — only real, working items) ───────
+
+const MENU_SECTIONS = [
+  {
+    title: "ACCOUNT",
+    items: [
+      {
+        icon: <IconShield size={18} color="#fff" />,
+        label: "Privacy & Security",
+        bg: "#065f46",
+      },
+      {
+        icon: <IconShield size={18} color="#fff" />,
+        label: "Request Verification",
+        bg: "#4c1d95",
+      },
+    ],
+  },
+  {
+    title: "APPEARANCE",
+    items: [
+      {
+        icon: <IconPalette size={18} color="#fff" />,
+        label: "Theme & Colors",
+        bg: "#9d174d",
+      },
+    ],
+  },
+  {
+    title: "SUPPORT",
+    items: [
+      {
+        icon: <IconHelp size={18} color="#fff" />,
+        label: "Help & Support",
+        bg: "#1e3a5f",
+      },
+      {
+        icon: <IconStar size={18} color="#fff" />,
+        label: "Rate the App",
+        bg: "#78350f",
+      },
+    ],
+  },
+];
+
+// ─── MAIN ─────────────────────────────────────────────────
 
 export default function Profile() {
   const router = useRouter();
@@ -660,7 +689,6 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: "",
@@ -692,16 +720,12 @@ export default function Profile() {
       setLoading(true);
       try {
         let userData: UserType | null = null;
-
-        if (passedUser && typeof passedUser === "string") {
+        if (passedUser && typeof passedUser === "string")
           userData = JSON.parse(passedUser);
-        }
-
         if (!userData) {
           const stored = await SecureStore.getItemAsync("user");
           if (stored) userData = JSON.parse(stored);
         }
-
         if (userData) {
           setCurrentUser(userData);
           setEditForm({
@@ -719,7 +743,6 @@ export default function Profile() {
         setLoading(false);
       }
     };
-
     loadProfile();
   }, [passedUser]);
 
@@ -728,38 +751,20 @@ export default function Profile() {
     extension: string,
     mimeType: string,
   ) => {
-    try {
-      const res = await fetch(`${API_BASE}/upload_profile_image_base64.php`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          image: imageBase64,
-          extension,
-          mimeType,
-        }),
-      });
-
-      const text = await res.text();
-      const data = JSON.parse(text);
-
-      if (data.success && data.imageUrl) {
-        return data.imageUrl as string;
-      }
-
-      throw new Error(data.message || "Avatar upload failed");
-    } catch (err: any) {
-      console.error("Avatar upload error:", err);
-      throw err;
-    }
+    const res = await fetch(`${API_BASE}/upload_profile_image_base64.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: imageBase64, extension, mimeType }),
+    });
+    const data = await res.json();
+    if (data.success && data.imageUrl) return data.imageUrl as string;
+    throw new Error(data.message || "Avatar upload failed");
   };
 
   const pickAvatar = async () => {
     try {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (status !== "granted") {
         Alert.alert(
           "Permission required",
@@ -767,7 +772,6 @@ export default function Profile() {
         );
         return;
       }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -775,29 +779,26 @@ export default function Profile() {
         quality: 0.7,
         base64: true,
       });
-
       if (result.canceled || !result.assets?.[0]?.base64) return;
-
       const asset = result.assets[0];
       setUploadingAvatar(true);
-
-      const originalName =
+      const name = (
         asset.fileName ||
         asset.uri.split("/").pop() ||
-        `avatar_${Date.now()}.jpg`;
-      const cleanName = originalName.split("?")[0];
-      const match = /\.(jpg|jpeg|png|gif|webp)$/i.exec(cleanName);
-      const ext = match ? match[1].toLowerCase() : "jpg";
-
-      let mimeType = "image/jpeg";
-      if (ext === "png") mimeType = "image/png";
-      if (ext === "gif") mimeType = "image/gif";
-      if (ext === "webp") mimeType = "image/webp";
-
+        "avatar.jpg"
+      ).split("?")[0];
+      const ext = (
+        /\.(jpg|jpeg|png|gif|webp)$/i.exec(name)?.[1] || "jpg"
+      ).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        png: "image/png",
+        gif: "image/gif",
+        webp: "image/webp",
+      };
+      const mimeType = mimeMap[ext] || "image/jpeg";
       const uploadedUrl = await uploadAvatarBase64(asset.base64, ext, mimeType);
-
       setEditForm((prev) => ({ ...prev, avatar_url: uploadedUrl }));
-      Alert.alert("Success", "Avatar updated successfully.");
+      Alert.alert("Success", "Avatar updated.");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to upload avatar.");
     } finally {
@@ -810,9 +811,7 @@ export default function Profile() {
       Alert.alert("Error", "No user ID found.");
       return;
     }
-
     setSaving(true);
-
     try {
       const body = {
         user_id: currentUser.id,
@@ -824,15 +823,12 @@ export default function Profile() {
         accent_color: editForm.color,
         profile_picture: editForm.avatar_url,
       };
-
       const res = await fetch(`${API_BASE}/update_profile.php`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
       const data = await res.json();
-
       if (data.status === "success") {
         const updatedUser = {
           ...currentUser,
@@ -844,15 +840,14 @@ export default function Profile() {
           color: body.accent_color,
           avatar_url: body.profile_picture,
         };
-
         setCurrentUser(updatedUser);
         await SecureStore.setItemAsync("user", JSON.stringify(updatedUser));
         setEditModalVisible(false);
-        Alert.alert("Success", "Profile updated successfully.");
+        Alert.alert("Success", "Profile updated.");
       } else {
         Alert.alert("Error", data.message || "Failed to update profile.");
       }
-    } catch (err) {
+    } catch {
       Alert.alert("Error", "Network error. Please try again.");
     } finally {
       setSaving(false);
@@ -875,15 +870,11 @@ export default function Profile() {
     ]);
   };
 
-  // Navigation handlers
-  const goToHandouts = () => router.push("/handouts");
-  const goToQuizzes = () => router.push("/quizzes");
-
   const name = currentUser?.full_name || currentUser?.username || "Guest";
   const handleText = currentUser?.username
     ? `@${currentUser.username}`
     : "@unknown";
-  const bioText = currentUser?.bio || "No bio set yet.";
+  const bioText = currentUser?.bio || "";
   const deptLevel =
     currentUser?.department && currentUser?.level
       ? `${currentUser.department} · ${currentUser.level}`
@@ -908,39 +899,38 @@ export default function Profile() {
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
       <StatusBar barStyle={C.statusBar} backgroundColor={C.bg} />
 
+      {/* Top accent line */}
       <View style={[s.accentLine, { backgroundColor: C.accent }]} />
 
+      {/* Top bar */}
       <View style={[s.topBar, { borderBottomColor: C.border }]}>
-        <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <View
-              style={[
-                s.logoMark,
-                { backgroundColor: C.accentFaint, borderColor: C.accentMid },
-              ]}
-            >
-              <Text style={[s.logoMarkText, { color: C.accentGlow }]}>U</Text>
-            </View>
-            <View>
-              <Text style={[s.wordmark, { color: C.text }]}>
-                UNIMAID <Text style={{ color: C.accentGlow }}>RESOURCES</Text>
-              </Text>
-              <Text style={[s.wordmarkSub, { color: C.textMuted }]}>
-                Profile Settings
-              </Text>
-            </View>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <View
+            style={[
+              s.logoMark,
+              { backgroundColor: C.accentFaint, borderColor: C.accentMid },
+            ]}
+          >
+            <Text style={[s.logoMarkText, { color: C.accentGlow }]}>U</Text>
+          </View>
+          <View>
+            <Text style={[s.wordmark, { color: C.text }]}>
+              UNIMAID <Text style={{ color: C.accentGlow }}>RESOURCES</Text>
+            </Text>
+            <Text style={[s.wordmarkSub, { color: C.textMuted }]}>
+              Your Profile
+            </Text>
           </View>
         </View>
         <View style={s.topActions}>
           <ThemeSwitcher current={theme} onChange={handleThemeChange} C={C} />
-          <TouchableOpacity
-            style={[
-              s.iconBtn,
-              { backgroundColor: C.card, borderColor: C.border },
-            ]}
-          >
-            <IconBell color={C.textMuted} />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -951,7 +941,7 @@ export default function Profile() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Hero Card */}
+        {/* ── Hero card ── */}
         <View
           style={[
             s.heroCard,
@@ -968,6 +958,7 @@ export default function Profile() {
           </View>
 
           <View style={s.heroBody}>
+            {/* Avatar */}
             <View style={s.avatarWrap}>
               {currentUser?.avatar_url ? (
                 <Image
@@ -995,7 +986,6 @@ export default function Profile() {
                   </Text>
                 </View>
               )}
-
               <TouchableOpacity
                 style={[
                   s.editAvatarBtn,
@@ -1007,6 +997,7 @@ export default function Profile() {
               </TouchableOpacity>
             </View>
 
+            {/* Info */}
             <View style={s.heroInfo}>
               <Text style={[s.heroName, { color: C.text }]}>{name}</Text>
               <Text style={[s.heroHandle, { color: C.accentGlow }]}>
@@ -1015,7 +1006,7 @@ export default function Profile() {
               <Text style={[s.heroDept, { color: C.textMuted }]}>
                 {deptLevel}
               </Text>
-              {bioText !== "No bio set yet." && (
+              {!!bioText && (
                 <Text style={[s.heroBio, { color: C.textSoft }]}>
                   {bioText}
                 </Text>
@@ -1038,7 +1029,7 @@ export default function Profile() {
           </View>
         </View>
 
-        {/* Stats – now button-like */}
+        {/* ── Quick access: Handouts / Quizzes / Summaries ── */}
         <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
           <View
             style={[
@@ -1046,61 +1037,37 @@ export default function Profile() {
               { backgroundColor: C.card, borderColor: C.border },
             ]}
           >
-            <TouchableOpacity
-              style={[s.statButton, { backgroundColor: C.accentFaint + "40" }]}
-              onPress={goToHandouts}
-              activeOpacity={0.8}
-            >
-              <Text style={[s.statNumber, { color: C.accentGlow }]}>24</Text>
-              <Text style={[s.statText, { color: C.textSoft }]}>Handouts</Text>
-            </TouchableOpacity>
-
-            <View style={[s.statSeparator, { backgroundColor: C.border }]} />
-
-            <TouchableOpacity
-              style={[s.statButton, { backgroundColor: C.accentFaint + "40" }]}
-              onPress={goToQuizzes}
-              activeOpacity={0.8}
-            >
-              <Text style={[s.statNumber, { color: C.accentGlow }]}>7</Text>
-              <Text style={[s.statText, { color: C.textSoft }]}>Quizzes</Text>
-            </TouchableOpacity>
-
-            <View style={[s.statSeparator, { backgroundColor: C.border }]} />
-
-            <View style={s.statButton}>
-              <Text style={[s.statNumber, { color: C.text }]}>42</Text>
-              <Text style={[s.statText, { color: C.textMuted }]}>
-                Summaries
-              </Text>
-            </View>
+            {[
+              { label: "Handouts", route: "/handouts" },
+              { label: "Quizzes", route: "/quizzes" },
+              { label: "Summaries", route: null },
+            ].map((item, i, arr) => (
+              <React.Fragment key={item.label}>
+                <TouchableOpacity
+                  style={s.statButton}
+                  onPress={() => item.route && router.push(item.route as any)}
+                  activeOpacity={item.route ? 0.75 : 1}
+                >
+                  <Text
+                    style={[
+                      s.statText,
+                      { color: item.route ? C.accentGlow : C.textMuted },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+                {i < arr.length - 1 && (
+                  <View
+                    style={[s.statSeparator, { backgroundColor: C.border }]}
+                  />
+                )}
+              </React.Fragment>
+            ))}
           </View>
         </View>
 
-        {/* Toggle card */}
-        <View
-          style={[
-            s.togglesCard,
-            { backgroundColor: C.card, borderColor: C.border },
-          ]}
-        >
-          <View style={[s.toggleRow, { borderBottomColor: C.border }]}>
-            <View style={[s.menuIconBox, { backgroundColor: "#b45309" }]}>
-              <Text style={s.menuEmoji}>🔔</Text>
-            </View>
-            <Text style={[s.menuLabel, { color: C.textSoft }]}>
-              Push Notifications
-            </Text>
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={setNotificationsEnabled}
-              trackColor={{ false: C.border, true: C.accentMid }}
-              thumbColor={notificationsEnabled ? C.accentGlow : C.textFaint}
-            />
-          </View>
-        </View>
-
-        {/* Menu sections */}
+        {/* ── Menu sections ── */}
         {MENU_SECTIONS.map((section, si) => (
           <View key={si} style={s.menuSection}>
             <Text style={[s.sectionLabel, { color: C.textFaint }]}>
@@ -1116,7 +1083,7 @@ export default function Profile() {
                 <View key={ii}>
                   <TouchableOpacity style={s.menuItem} activeOpacity={0.72}>
                     <View style={[s.menuIconBox, { backgroundColor: item.bg }]}>
-                      <Text style={s.menuEmoji}>{item.icon}</Text>
+                      {item.icon}
                     </View>
                     <Text style={[s.menuLabel, { color: C.textSoft }]}>
                       {item.label}
@@ -1134,7 +1101,7 @@ export default function Profile() {
           </View>
         ))}
 
-        {/* Logout */}
+        {/* ── Sign out ── */}
         <TouchableOpacity
           style={[
             s.logoutBtn,
@@ -1151,11 +1118,11 @@ export default function Profile() {
         </TouchableOpacity>
 
         <Text style={[s.version, { color: C.textFaint }]}>
-          Unimaid Resources v1.0.0
+          Unimaid Resources v4.0.0
         </Text>
       </ScrollView>
 
-      {/* Edit Modal */}
+      {/* ── Edit Profile Modal ── */}
       <Modal
         animationType="slide"
         transparent
@@ -1198,6 +1165,7 @@ export default function Profile() {
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
               >
+                {/* Avatar preview */}
                 <View style={s.modalAvatarRow}>
                   {editForm.avatar_url ? (
                     <Image
@@ -1227,7 +1195,6 @@ export default function Profile() {
                       </Text>
                     </View>
                   )}
-
                   <View style={{ flex: 1 }}>
                     <Text style={[s.modalAvatarHint, { color: C.textMuted }]}>
                       Profile preview
@@ -1235,7 +1202,7 @@ export default function Profile() {
                     <Text
                       style={{ color: C.textFaint, fontSize: 12, marginTop: 2 }}
                     >
-                      Changes to avatar & color appear live
+                      Avatar & color update live
                     </Text>
                   </View>
                 </View>
@@ -1343,7 +1310,6 @@ export default function Profile() {
                       Cancel
                     </Text>
                   </TouchableOpacity>
-
                   <TouchableOpacity
                     style={[
                       s.modalSaveBtn,
@@ -1376,7 +1342,7 @@ export default function Profile() {
   );
 }
 
-// ─── STYLES ──────────────────────────────────────────────────────────────────
+// ─── STYLES ───────────────────────────────────────────────
 
 const s = StyleSheet.create({
   safe: { flex: 1 },
@@ -1462,12 +1428,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 3,
   },
-  avatarImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 26,
-    borderWidth: 3,
-  },
+  avatarImage: { width: 80, height: 80, borderRadius: 26, borderWidth: 3 },
   avatarText: { fontSize: 28, fontWeight: "900" },
   editAvatarBtn: {
     position: "absolute",
@@ -1502,7 +1463,6 @@ const s = StyleSheet.create({
   },
   editProfileText: { fontWeight: "700", fontSize: 14 },
 
-  // ─── Updated Stats Section ───────────────────────────────────────────────
   statsContainer: {
     flexDirection: "row",
     borderWidth: 1,
@@ -1515,33 +1475,8 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  statNumber: {
-    fontSize: 26,
-    fontWeight: "800",
-    marginBottom: 4,
-  },
-  statText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  statSeparator: {
-    width: 1,
-    marginVertical: 12,
-  },
-
-  togglesCard: {
-    marginHorizontal: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  toggleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 13,
-  },
+  statText: { fontSize: 14, fontWeight: "600" },
+  statSeparator: { width: 1, marginVertical: 12 },
 
   sectionLabel: {
     fontSize: 10,
@@ -1572,7 +1507,6 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  menuEmoji: { fontSize: 17 },
   menuLabel: { flex: 1, fontSize: 14, fontWeight: "600" },
   itemDivider: { height: 1, marginLeft: 64 },
 
@@ -1652,12 +1586,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 2,
   },
-  modalAvatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
-    borderWidth: 2,
-  },
+  modalAvatarImage: { width: 60, height: 60, borderRadius: 18, borderWidth: 2 },
   modalAvatarText: { fontSize: 20, fontWeight: "900" },
   modalAvatarHint: { fontSize: 14, fontWeight: "600" },
   avatarUploadBtn: {
@@ -1670,10 +1599,7 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 18,
   },
-  avatarUploadText: {
-    fontSize: 14,
-    fontWeight: "700",
-  },
+  avatarUploadText: { fontSize: 14, fontWeight: "700" },
   modalLabel: {
     fontSize: 12,
     fontWeight: "600",

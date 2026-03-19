@@ -14,6 +14,7 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { C } from "./constants/theme";
 
 const API_BASE = "https://unresources.cravii.ng/api";
@@ -37,9 +38,10 @@ export default function TakeQuiz() {
     timeLimit: string;
   }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [numQuestions, setNumQuestions] = useState<string>("10"); // default suggestion
+  const [numQuestions, setNumQuestions] = useState<string>("10");
   const [stage, setStage] = useState<"setup" | "taking">("setup");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
@@ -48,9 +50,9 @@ export default function TakeQuiz() {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fisher-Yates modern shuffle (ES6+)
+  // Fisher-Yates shuffle
   const shuffleArray = <T,>(array: T[]): T[] => {
-    const shuffled = [...array]; // avoid mutating original
+    const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -79,7 +81,6 @@ export default function TakeQuiz() {
         if (data.status === "success") {
           const qs = data.questions || [];
           setQuestions(qs);
-          // Suggest reasonable default (min(10, total))
           const suggested = Math.min(10, qs.length);
           setNumQuestions(suggested.toString());
         } else {
@@ -98,7 +99,7 @@ export default function TakeQuiz() {
     loadQuestions();
   }, [quizId, timeLimit, router]);
 
-  // Timer logic
+  // Timer
   useEffect(() => {
     if (stage !== "taking" || timeLeft <= 0) return;
 
@@ -132,16 +133,13 @@ export default function TakeQuiz() {
       );
     }
 
-    // Shuffle freshly every time we start
     const shuffled = shuffleArray(questions);
-    // Take only the requested amount (or all if more requested)
     const selectedQuestions = shuffled.slice(
       0,
       Math.min(wanted, totalAvailable),
     );
 
-    // We'll use selectedQuestions as the quiz pool from now on
-    setQuestions(selectedQuestions); // overwrite with shuffled & sliced version
+    setQuestions(selectedQuestions);
     setStage("taking");
     setCurrentIndex(0);
     setAnswers({});
@@ -220,7 +218,6 @@ export default function TakeQuiz() {
                 style={styles.numberInput}
                 value={numQuestions}
                 onChangeText={(text) => {
-                  // Only allow numbers
                   if (/^\d*$/.test(text)) setNumQuestions(text);
                 }}
                 keyboardType="number-pad"
@@ -242,7 +239,7 @@ export default function TakeQuiz() {
     );
   }
 
-  // Taking the quiz stage
+  // ── Taking quiz stage ──
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
@@ -254,7 +251,12 @@ export default function TakeQuiz() {
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + 140 }, // extra space for footer + nav bar
+        ]}
+      >
         <Text style={styles.question}>{currentQ?.question || ""}</Text>
 
         <View style={styles.options}>
@@ -279,7 +281,14 @@ export default function TakeQuiz() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View
+        style={[
+          styles.footer,
+          {
+            paddingBottom: insets.bottom + 16, // lift above system navigation bar
+          },
+        ]}
+      >
         <TouchableOpacity
           style={[styles.navBtn, currentIndex === 0 && styles.disabled]}
           disabled={currentIndex === 0}
@@ -299,9 +308,12 @@ export default function TakeQuiz() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+  safe: {
+    flex: 1,
+    backgroundColor: C.bg,
+  },
 
-  // Setup stage
+  // Setup stage styles (unchanged)
   setupContainer: {
     flexGrow: 1,
     padding: 24,
@@ -352,7 +364,6 @@ const styles = StyleSheet.create({
     color: C.faint,
     fontSize: 14,
   },
-
   startBtn: {
     backgroundColor: C.purpleMid,
     paddingVertical: 18,
@@ -361,9 +372,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     width: "100%",
   },
-  startText: { color: "#fff", fontWeight: "800", fontSize: 18 },
+  startText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 18,
+  },
 
-  // Taking stage (same as before)
+  // Taking stage styles
   header: {
     padding: 16,
     backgroundColor: C.card,
@@ -372,10 +387,19 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  timer: { color: C.purpleGlow, fontWeight: "800", fontSize: 16 },
-  progress: { color: C.faint },
+  timer: {
+    color: C.purpleGlow,
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  progress: {
+    color: C.faint,
+  },
 
-  content: { padding: 20, paddingBottom: 120 },
+  content: {
+    padding: 20,
+    // paddingBottom is now dynamic via insets
+  },
   question: {
     fontSize: 18,
     fontWeight: "700",
@@ -384,7 +408,9 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
 
-  options: { gap: 12 },
+  options: {
+    gap: 12,
+  },
   option: {
     backgroundColor: C.card,
     padding: 16,
@@ -398,16 +424,28 @@ const styles = StyleSheet.create({
     borderColor: C.purpleGlow,
     backgroundColor: `${C.purpleGlow}22`,
   },
-  optLabel: { fontWeight: "800", color: C.purpleGlow, width: 28, fontSize: 16 },
-  optText: { color: C.white, flex: 1, fontSize: 15, lineHeight: 22 },
+  optLabel: {
+    fontWeight: "800",
+    color: C.purpleGlow,
+    width: 28,
+    fontSize: 16,
+  },
+  optText: {
+    color: C.white,
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 22,
+  },
 
   footer: {
     flexDirection: "row",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
     backgroundColor: C.card,
     borderTopWidth: 1,
     borderTopColor: C.border,
     gap: 12,
+    // paddingBottom is now dynamic via insets
   },
   navBtn: {
     flex: 1,
@@ -425,7 +463,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
   },
-  navText: { color: C.white, fontWeight: "700", fontSize: 16 },
-  submitText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-  disabled: { opacity: 0.5 },
+  navText: {
+    color: C.white,
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  submitText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  disabled: {
+    opacity: 0.5,
+  },
 });
