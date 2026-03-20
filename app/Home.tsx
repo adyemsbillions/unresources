@@ -765,7 +765,6 @@ export default function Home() {
       console.error("Chat list error:", err);
     }
   };
-
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -774,36 +773,50 @@ export default function Home() {
       try {
         let userData: UserType | null = null;
 
+        // 1. First priority: passed via navigation params (e.g. deep link or redirect)
         if (passedUser && typeof passedUser === "string") {
-          userData = JSON.parse(passedUser);
+          try {
+            userData = JSON.parse(passedUser);
+          } catch (e) {
+            console.warn("Invalid user param:", passedUser);
+          }
         }
 
+        // 2. Fallback: stored credentials
         if (!userData) {
           const stored = await SecureStore.getItemAsync("user");
-          if (stored) userData = JSON.parse(stored);
+          if (stored) {
+            try {
+              userData = JSON.parse(stored);
+            } catch (e) {
+              console.warn("Corrupted user in secure store:", e);
+              await SecureStore.deleteItemAsync("user"); // clean up bad data
+            }
+          }
         }
 
+        // 3. No valid user → redirect to login
         if (!userData?.id) {
-          setError("No logged-in user found");
-          setLoading(false);
-          return;
+          router.replace("/login");
+          return; // important: stop further execution
         }
 
+        // We have a user → proceed
         setCurrentUser(userData);
         setCurrentUserId(String(userData.id));
 
         const map = await loadPeopleMap();
         await loadChatList(String(userData.id), map);
       } catch (err) {
-        setError("Failed to load chats");
-        console.error(err);
+        console.error("Init error:", err);
+        setError("Something went wrong while loading");
       } finally {
         setLoading(false);
       }
     };
 
     init();
-  }, [passedUser]);
+  }, [passedUser, router]); // ← add router to deps if needed (usually safe)
 
   useEffect(() => {
     if (!currentUserId) return;
