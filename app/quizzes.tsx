@@ -43,6 +43,7 @@ export default function QuizzesScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [hasPaid, setHasPaid] = useState<boolean | null>(null);
+  const [paymentRequired, setPaymentRequired] = useState<boolean>(true);
   const [showPaymentWebView, setShowPaymentWebView] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -84,9 +85,19 @@ export default function QuizzesScreen() {
 
       if (data.status === "success") {
         const isPaid = !!data.data?.has_paid;
+        const isPaymentRequired = !!data.data?.payment_required;
+
         console.log(
-          `[PAYMENT] Server reports has_paid = ${isPaid ? "YES" : "NO"}`,
+          `[PAYMENT] has_paid = ${isPaid ? "YES" : "NO"} | payment_required = ${isPaymentRequired ? "YES" : "NO"}`,
         );
+
+        setPaymentRequired(isPaymentRequired);
+
+        if (!isPaymentRequired) {
+          setHasPaid(true);
+          return true;
+        }
+
         setHasPaid(isPaid);
         return isPaid;
       } else {
@@ -195,7 +206,12 @@ export default function QuizzesScreen() {
       const data = JSON.parse(text);
 
       if (data.status === "success") {
-        if (data.data.already_paid) {
+        if (data.data.payment_required === false || data.data.free_access) {
+          console.log("[PAYMENT] Payment currently disabled from backend");
+          setPaymentRequired(false);
+          setHasPaid(true);
+          Alert.alert("Access Open", "Payment is currently turned off.");
+        } else if (data.data.already_paid) {
           console.log("[PAYMENT] Already paid - skipping");
           setHasPaid(true);
           Alert.alert("Access Granted", "You already have full access!");
@@ -336,7 +352,7 @@ export default function QuizzesScreen() {
     );
   }
 
-  if (!hasPaid) {
+  if (paymentRequired && !hasPaid) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={C.bg} />
@@ -357,16 +373,9 @@ export default function QuizzesScreen() {
             {paymentLoading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.payBtnText}>Pay ₦200 </Text>
+              <Text style={styles.payBtnText}>Pay ₦200</Text>
             )}
           </TouchableOpacity>
-
-          {/* <TouchableOpacity
-            style={styles.refreshBtn}
-            onPress={checkPaymentStatus}
-          >
-            <Text style={styles.refreshText}>I've Paid – Refresh</Text>
-          </TouchableOpacity> */}
 
           <Text style={styles.paywallNote}>
             One-time payment • Instant access • Powered by Paystack
@@ -648,6 +657,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
   },
+  paywallNote: {
+    fontSize: 13,
+    color: C.faint,
+    textAlign: "center",
+  },
+
   refreshBtn: {
     backgroundColor: C.card,
     borderWidth: 1,
@@ -661,11 +676,6 @@ const styles = StyleSheet.create({
     color: C.purpleGlow,
     fontSize: 16,
     fontWeight: "700",
-  },
-  paywallNote: {
-    fontSize: 13,
-    color: C.faint,
-    textAlign: "center",
   },
 
   webviewHeader: {
