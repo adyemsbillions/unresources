@@ -1,8 +1,9 @@
 /*
   File: app/Home.tsx
   Purpose: Unimaid Resources — Real Chats Home Screen
-  Fix: Theme switching now actually works. C (static import) replaced with
-       live T object that re-renders the whole screen when theme changes.
+  Updates (March 2025):
+  - Theme switching works with live T object
+  - Bottom navigation now extends edge-to-edge (under home indicator / gesture bar)
 */
 
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -426,55 +427,63 @@ const NAV_ITEMS = [
 
 export function BottomNav({ active, T }: { active: string; T: Theme }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+
   return (
     <View
       style={[
-        ss.bottomNav,
-        { backgroundColor: T.navBg, borderTopColor: T.border },
+        ss.bottomNavContainer,
+        {
+          paddingBottom: insets.bottom,
+          backgroundColor: T.navBg,
+          borderTopColor: T.border,
+        },
       ]}
     >
-      {NAV_ITEMS.map((tab) => {
-        const isActive = active === tab.id;
-        return (
-          <TouchableOpacity
-            key={tab.id}
-            style={ss.navItem}
-            onPress={() => router.replace(tab.route as any)}
-            activeOpacity={0.7}
-          >
-            <View
-              style={[
-                ss.navIconWrap,
-                isActive && { backgroundColor: T.purpleFaint },
-              ]}
+      <View style={ss.bottomNavInner}>
+        {NAV_ITEMS.map((tab) => {
+          const isActive = active === tab.id;
+          return (
+            <TouchableOpacity
+              key={tab.id}
+              style={ss.navItem}
+              onPress={() => router.replace(tab.route as any)}
+              activeOpacity={0.7}
             >
-              {tab.id === "chats" && (
-                <IconChat color={isActive ? T.purpleGlow : T.faint} />
-              )}
-              {tab.id === "status" && (
-                <IconStatus color={isActive ? T.purpleGlow : T.faint} />
-              )}
-              {tab.id === "marketplace" && (
-                <IconMarket color={isActive ? T.purpleGlow : T.faint} />
-              )}
-              {tab.id === "profile" && (
-                <IconProfile color={isActive ? T.purpleGlow : T.faint} />
-              )}
-            </View>
-            <Text
-              style={[
-                ss.navLabel,
-                {
-                  color: isActive ? T.purpleGlow : T.faint,
-                  fontWeight: isActive ? "700" : "600",
-                },
-              ]}
-            >
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
+              <View
+                style={[
+                  ss.navIconWrap,
+                  isActive && { backgroundColor: T.purpleFaint },
+                ]}
+              >
+                {tab.id === "chats" && (
+                  <IconChat color={isActive ? T.purpleGlow : T.faint} />
+                )}
+                {tab.id === "status" && (
+                  <IconStatus color={isActive ? T.purpleGlow : T.faint} />
+                )}
+                {tab.id === "marketplace" && (
+                  <IconMarket color={isActive ? T.purpleGlow : T.faint} />
+                )}
+                {tab.id === "profile" && (
+                  <IconProfile color={isActive ? T.purpleGlow : T.faint} />
+                )}
+              </View>
+              <Text
+                style={[
+                  ss.navLabel,
+                  {
+                    color: isActive ? T.purpleGlow : T.faint,
+                    fontWeight: isActive ? "700" : "600",
+                  },
+                ]}
+              >
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -765,6 +774,7 @@ export default function Home() {
       console.error("Chat list error:", err);
     }
   };
+
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -773,7 +783,6 @@ export default function Home() {
       try {
         let userData: UserType | null = null;
 
-        // 1. First priority: passed via navigation params (e.g. deep link or redirect)
         if (passedUser && typeof passedUser === "string") {
           try {
             userData = JSON.parse(passedUser);
@@ -782,7 +791,6 @@ export default function Home() {
           }
         }
 
-        // 2. Fallback: stored credentials
         if (!userData) {
           const stored = await SecureStore.getItemAsync("user");
           if (stored) {
@@ -790,18 +798,16 @@ export default function Home() {
               userData = JSON.parse(stored);
             } catch (e) {
               console.warn("Corrupted user in secure store:", e);
-              await SecureStore.deleteItemAsync("user"); // clean up bad data
+              await SecureStore.deleteItemAsync("user");
             }
           }
         }
 
-        // 3. No valid user → redirect to login
         if (!userData?.id) {
           router.replace("/login");
-          return; // important: stop further execution
+          return;
         }
 
-        // We have a user → proceed
         setCurrentUser(userData);
         setCurrentUserId(String(userData.id));
 
@@ -816,7 +822,7 @@ export default function Home() {
     };
 
     init();
-  }, [passedUser, router]); // ← add router to deps if needed (usually safe)
+  }, [passedUser, router]);
 
   useEffect(() => {
     if (!currentUserId) return;
@@ -957,147 +963,161 @@ export default function Home() {
   }
 
   return (
-    <SafeAreaView style={[ss.safe, { backgroundColor: T.bg }]} edges={["top"]}>
-      <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
+    <>
+      <SafeAreaView
+        style={[ss.safe, { backgroundColor: T.bg }]}
+        edges={["top"]}
+      >
+        <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
 
-      <View style={{ paddingTop: Platform.OS === "android" ? 2 : 0 }}>
-        <TopBar
-          username={displayUsername}
-          theme={themeMode}
-          onThemeChange={handleThemeChange}
-          T={T}
-        />
-      </View>
-
-      <View style={ss.filterRow}>
-        {["All", "Unread", "Groups"].map((t) => (
-          <TouchableOpacity
-            key={t}
-            style={[
-              ss.filterPill,
-              {
-                backgroundColor: activeFilter === t ? T.purpleFaint : T.card,
-                borderColor: activeFilter === t ? T.purpleMid : T.border,
-              },
-            ]}
-            // ─── changed part ────────────────────────────────────────
-            onPress={() => {
-              if (t === "Groups") {
-                router.push("/groups");
-              } else {
-                setActiveFilter(t);
-              }
-            }}
-          >
-            <Text
-              style={[
-                ss.filterPillText,
-                {
-                  color: activeFilter === t ? T.purpleGlow : T.faint,
-                  fontWeight: activeFilter === t ? "700" : "600",
-                },
-              ]}
-            >
-              {t}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={{ position: "relative" }}>
-        <View
-          style={[
-            ss.searchBox,
-            { backgroundColor: T.card, borderColor: T.border },
-          ]}
-        >
-          <IconSearch color={T.faint} />
-          <TextInput
-            style={[ss.searchInput, { color: T.white }]}
-            placeholder="Search people or chats"
-            placeholderTextColor={T.faint}
-            value={query}
-            onChangeText={setQuery}
+        <View style={{ paddingTop: Platform.OS === "android" ? 2 : 0 }}>
+          <TopBar
+            username={displayUsername}
+            theme={themeMode}
+            onThemeChange={handleThemeChange}
+            T={T}
           />
         </View>
 
-        {suggestions.length > 0 && query.trim().length > 0 ? (
+        <View style={ss.filterRow}>
+          {["All", "Unread", "Groups"].map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[
+                ss.filterPill,
+                {
+                  backgroundColor: activeFilter === t ? T.purpleFaint : T.card,
+                  borderColor: activeFilter === t ? T.purpleMid : T.border,
+                },
+              ]}
+              onPress={() => {
+                if (t === "Groups") {
+                  router.push("/groups");
+                } else {
+                  setActiveFilter(t);
+                }
+              }}
+            >
+              <Text
+                style={[
+                  ss.filterPillText,
+                  {
+                    color: activeFilter === t ? T.purpleGlow : T.faint,
+                    fontWeight: activeFilter === t ? "700" : "600",
+                  },
+                ]}
+              >
+                {t}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={{ position: "relative" }}>
           <View
             style={[
-              ss.suggestionContainer,
+              ss.searchBox,
               { backgroundColor: T.card, borderColor: T.border },
             ]}
           >
-            <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }}>
-              {suggestions.map((user) => {
-                const name = user.full_name || user.username;
-                return (
-                  <TouchableOpacity
-                    key={String(user.id)}
-                    style={[ss.suggestionRow, { borderBottomColor: T.border }]}
-                    onPress={() => startNewChat(user)}
-                  >
-                    <Avatar
-                      initials={user.initials || getInitials(name)}
-                      color={user.color || stringToColor(name)}
-                      avatar={user.avatar}
-                      size={40}
-                      radius={13}
-                      online={!!user.online}
-                      T={T}
-                    />
-                    <View style={{ marginLeft: 12, flex: 1 }}>
-                      <Text style={[ss.suggestionName, { color: T.white }]}>
-                        {name}
-                      </Text>
-                      <Text style={[ss.suggestionUsername, { color: T.faint }]}>
-                        @{user.username}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        ) : null}
-      </View>
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 110 }}
-      >
-        <Text style={[ss.sectionLabel, { color: T.faint }]}>MESSAGES</Text>
-
-        {filteredChats.length === 0 ? (
-          <Text style={{ color: T.faint, textAlign: "center", marginTop: 40 }}>
-            No chats yet
-          </Text>
-        ) : (
-          filteredChats.map((chat) => (
-            <ChatRow
-              key={String(chat.id)}
-              chat={chat}
-              onPress={() => openChat(chat)}
-              T={T}
+            <IconSearch color={T.faint} />
+            <TextInput
+              style={[ss.searchInput, { color: T.white }]}
+              placeholder="Search people or chats"
+              placeholderTextColor={T.faint}
+              value={query}
+              onChangeText={setQuery}
             />
-          ))
-        )}
-      </ScrollView>
+          </View>
 
-      <TouchableOpacity
-        style={[
-          ss.fab,
-          { backgroundColor: T.purpleMid, shadowColor: T.purpleMid },
-        ]}
-        activeOpacity={0.85}
-        onPress={() => router.push("/people")}
-      >
-        <IconEdit color="#fff" size={19} />
-      </TouchableOpacity>
+          {suggestions.length > 0 && query.trim().length > 0 ? (
+            <View
+              style={[
+                ss.suggestionContainer,
+                { backgroundColor: T.card, borderColor: T.border },
+              ]}
+            >
+              <ScrollView nestedScrollEnabled style={{ maxHeight: 240 }}>
+                {suggestions.map((user) => {
+                  const name = user.full_name || user.username;
+                  return (
+                    <TouchableOpacity
+                      key={String(user.id)}
+                      style={[
+                        ss.suggestionRow,
+                        { borderBottomColor: T.border },
+                      ]}
+                      onPress={() => startNewChat(user)}
+                    >
+                      <Avatar
+                        initials={user.initials || getInitials(name)}
+                        color={user.color || stringToColor(name)}
+                        avatar={user.avatar}
+                        size={40}
+                        radius={13}
+                        online={!!user.online}
+                        T={T}
+                      />
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <Text style={[ss.suggestionName, { color: T.white }]}>
+                          {name}
+                        </Text>
+                        <Text
+                          style={[ss.suggestionUsername, { color: T.faint }]}
+                        >
+                          @{user.username}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          ) : null}
+        </View>
 
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingBottom: 110 + insets.bottom, // ← important: space for bottom nav + inset
+          }}
+        >
+          <Text style={[ss.sectionLabel, { color: T.faint }]}>MESSAGES</Text>
+
+          {filteredChats.length === 0 ? (
+            <Text
+              style={{ color: T.faint, textAlign: "center", marginTop: 40 }}
+            >
+              No chats yet
+            </Text>
+          ) : (
+            filteredChats.map((chat) => (
+              <ChatRow
+                key={String(chat.id)}
+                chat={chat}
+                onPress={() => openChat(chat)}
+                T={T}
+              />
+            ))
+          )}
+        </ScrollView>
+
+        <TouchableOpacity
+          style={[
+            ss.fab,
+            { backgroundColor: T.purpleMid, shadowColor: T.purpleMid },
+          ]}
+          activeOpacity={0.85}
+          onPress={() => router.push("/people")}
+        >
+          <IconEdit color="#fff" size={19} />
+        </TouchableOpacity>
+      </SafeAreaView>
+
+      {/* Bottom navigation — placed outside SafeAreaView → edge-to-edge */}
       <BottomNav active="chats" T={T} />
-    </SafeAreaView>
+    </>
   );
 }
 
@@ -1270,7 +1290,7 @@ const ss = StyleSheet.create({
 
   fab: {
     position: "absolute",
-    bottom: 84,
+    bottom: 100,
     right: 20,
     width: 54,
     height: 54,
@@ -1281,13 +1301,17 @@ const ss = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45,
     shadowRadius: 14,
+    zIndex: 5,
   },
 
-  bottomNav: {
-    flexDirection: "row",
+  // ── Bottom Nav ───────────────────────────────────────────────────────────────
+  bottomNavContainer: {
     borderTopWidth: 1,
-    paddingBottom: 10,
+  },
+  bottomNavInner: {
+    flexDirection: "row",
     paddingTop: 8,
+    paddingBottom: 4, // extra inner padding — total height controlled by container
   },
   navItem: { flex: 1, alignItems: "center", gap: 4 },
   navIconWrap: {

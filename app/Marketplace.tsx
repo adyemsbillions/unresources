@@ -26,6 +26,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path } from "react-native-svg";
 import { BottomNav } from "./Home";
 
@@ -540,6 +541,8 @@ function ListingCard({
 }
 
 export default function Marketplace() {
+  const insets = useSafeAreaInsets();
+
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const T: Theme = THEMES[themeMode];
 
@@ -944,7 +947,13 @@ export default function Marketplace() {
           style={{ flex: 1 }}
         />
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            paddingBottom: 80 + insets.bottom, // enough space for bottom nav + safe area
+          }}
+        >
           {pairs.length === 0 ? (
             <Text
               style={[
@@ -978,7 +987,6 @@ export default function Marketplace() {
               </View>
             ))
           )}
-          <View style={{ height: rs(100, 90, 110) }} />
         </ScrollView>
       )}
 
@@ -1413,7 +1421,15 @@ export default function Marketplace() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      <BottomNav active="marketplace" T={T} />
+      {/* Bottom Navigation with safe area padding */}
+      <View
+        style={{
+          backgroundColor: T.navBg || T.card,
+          paddingBottom: insets.bottom,
+        }}
+      >
+        <BottomNav active="marketplace" T={T} />
+      </View>
     </SafeAreaView>
   );
 }

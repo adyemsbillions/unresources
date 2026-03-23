@@ -13,6 +13,7 @@ import {
   Animated,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
@@ -870,6 +871,34 @@ export default function Profile() {
     ]);
   };
 
+  // New function: Open WhatsApp with pre-filled message
+  const handleRequestVerification = async () => {
+    const name = currentUser?.full_name || currentUser?.username || "User";
+    const phone = "2349139293270"; // international format without +
+    const message = `Hi Unimaid Resources, I am interested in the verification. I know I have to pay ₦700 for it. My name is ${name}.`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `whatsapp://send?phone=${phone}&text=${encodedMessage}`;
+
+    try {
+      // Optional: check if can open (but many recommend skipping canOpenURL for WhatsApp)
+      const supported = await Linking.canOpenURL(whatsappUrl);
+      if (supported) {
+        await Linking.openURL(whatsappUrl);
+      } else {
+        Alert.alert(
+          "WhatsApp not found",
+          "Please install WhatsApp to request verification.",
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        "Error",
+        "Could not open WhatsApp. Make sure it's installed.",
+      );
+    }
+  };
+
   const name = currentUser?.full_name || currentUser?.username || "Guest";
   const handleText = currentUser?.username
     ? `@${currentUser.username}`
@@ -936,7 +965,7 @@ export default function Profile() {
 
       <ScrollView
         contentContainerStyle={{
-          paddingBottom: Math.max(insets.bottom + 100, 120),
+          paddingBottom: 80 + insets.bottom, // nav height + safe area
         }}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -1081,7 +1110,16 @@ export default function Profile() {
             >
               {section.items.map((item, ii) => (
                 <View key={ii}>
-                  <TouchableOpacity style={s.menuItem} activeOpacity={0.72}>
+                  <TouchableOpacity
+                    style={s.menuItem}
+                    activeOpacity={0.72}
+                    onPress={() => {
+                      if (item.label === "Request Verification") {
+                        handleRequestVerification();
+                      }
+                      // other menu items can have logic added later
+                    }}
+                  >
                     <View style={[s.menuIconBox, { backgroundColor: item.bg }]}>
                       {item.icon}
                     </View>
@@ -1337,7 +1375,15 @@ export default function Profile() {
         </KeyboardAvoidingView>
       </Modal>
 
-      <BottomNav active="profile" C={C} />
+      {/* Bottom Navigation with safe area padding */}
+      <View
+        style={{
+          backgroundColor: C.navBg || C.card,
+          paddingBottom: insets.bottom,
+        }}
+      >
+        <BottomNav active="profile" C={C} />
+      </View>
     </SafeAreaView>
   );
 }

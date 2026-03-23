@@ -24,7 +24,6 @@ import {
   PanResponder,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -38,13 +37,7 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import Svg, {
-  Circle,
-  Line,
-  Path,
-  Polyline,
-  Rect
-} from "react-native-svg";
+import Svg, { Circle, Line, Path, Polyline, Rect } from "react-native-svg";
 
 const API_BASE = "https://unresources.cravii.ng/api";
 const REACTION_EMOJIS = ["❤️", "👍", "😂", "😮", "🔥", "🙏"];
@@ -807,7 +800,6 @@ export default function ChatRoom() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState("");
   const [currentUsername, setCurrentUsername] = useState("You");
@@ -827,6 +819,7 @@ export default function ChatRoom() {
   const isNearBottomRef = useRef(true);
   const previousMessageCountRef = useRef(0);
   const inputBarAnim = useRef(new Animated.Value(0)).current;
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const bubbleImageSize = Math.min(Math.max(width * 0.62, 180), 300);
 
@@ -969,20 +962,28 @@ export default function ChatRoom() {
     })();
   }, [otherUserId, passedAvatarUrl]);
 
-  const loadMessages = async (showLoader = true) => {
-    if (!otherUserId || !currentUserId) {
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-    if (showLoader) setLoading(true);
+  const getLatestMessageId = useMemo(() => {
+    const realMsgs = messages.filter((m) => typeof m.id === "number");
+    if (realMsgs.length === 0) return null;
+    return Math.max(...realMsgs.map((m) => Number(m.id)));
+  }, [messages]);
+
+  const loadMessages = async (isBackground = false) => {
+    if (!otherUserId || !currentUserId) return;
+
+    if (!isBackground) setLoading(true);
     setError(null);
+
     try {
       const url = `${API_BASE}/get_messages.php?id=${encodeURIComponent(otherUserId)}&sender_id=${encodeURIComponent(currentUserId)}&name=${encodeURIComponent(chatName)}`;
-      const data = JSON.parse(await (await fetch(url)).text());
+      const res = await fetch(url);
+      const text = await res.text();
+      const data = JSON.parse(text);
+
       if (data.status === "success") {
         const msgsWithDates: Msg[] = [];
         let lastDate: string | null = null;
+
         (data.messages || []).forEach((msg: any) => {
           const msgDate = new Date(msg.created_at).toLocaleDateString();
           if (msgDate !== lastDate) {
@@ -1007,40 +1008,61 @@ export default function ChatRoom() {
             replyToSender: msg.reply_to_sender || undefined,
           });
         });
+
         const prevCount = previousMessageCountRef.current;
         const newCount = msgsWithDates.filter((m) => !m.dateSeparator).length;
-        setMessages(msgsWithDates);
-        previousMessageCountRef.current = newCount;
-        if (!hasLoadedInitially.current) {
-          hasLoadedInitially.current = true;
-          scrollToEnd(false);
-        } else if (newCount > prevCount && isNearBottomRef.current)
-          scrollToEnd(true);
+
+        // Only update state if something actually changed
+        if (
+          newCount !== prevCount ||
+          getLatestMessageId !== getLatestMessageId
+        ) {
+          setMessages(msgsWithDates);
+          previousMessageCountRef.current = newCount;
+
+          if (!hasLoadedInitially.current) {
+            hasLoadedInitially.current = true;
+            scrollToEnd(false);
+          } else if (newCount > prevCount && isNearBottomRef.current) {
+            scrollToEnd(true);
+          }
+        }
       } else {
-        setError(data.message || "Failed to load messages");
+        if (!isBackground) setError(data.message || "Failed to load messages");
       }
-    } catch {
-      setError("Network error");
+    } catch (err) {
+      if (!isBackground) setError("Network error");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
+  // Initial load
   useEffect(() => {
-    if (currentUserId && otherUserId) loadMessages(true);
+    if (currentUserId && otherUserId) {
+      loadMessages(false);
+    }
   }, [currentUserId, otherUserId]);
 
+  // Hidden background polling (~every 2.3 seconds)
   useEffect(() => {
     if (!currentUserId || !otherUserId) return;
-    const interval = setInterval(() => loadMessages(false), 3000);
-    return () => clearInterval(interval);
-  }, [currentUserId, otherUserId]);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadMessages(false);
-  };
+    // Clean up previous interval if exists
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    pollingIntervalRef.current = setInterval(() => {
+      loadMessages(true); // background mode → no UI loading state
+    }, 2300);
+
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [currentUserId, otherUserId]);
 
   const sendImage = async () => {
     try {
@@ -1286,7 +1308,7 @@ export default function ChatRoom() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
       >
-        {/* ── MESSAGES LIST ── */}
+        {/* ── MESSAGES LIST ── (no RefreshControl) */}
         <ScrollView
           ref={scrollRef}
           style={s.list}
@@ -1295,13 +1317,6 @@ export default function ChatRoom() {
             paddingBottom: Math.max(insets.bottom + 120, 130),
           }}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor="#7c3aed"
-            />
-          }
           onScroll={handleScroll}
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"

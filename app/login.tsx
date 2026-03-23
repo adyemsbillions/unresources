@@ -1,6 +1,6 @@
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,18 +19,60 @@ type AuthMode = "login" | "signup";
 export default function Login() {
   const router = useRouter();
 
+  // ─── Auth check states ───────────────────────────────────────
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // ─── Form states ─────────────────────────────────────────────
   const [mode, setMode] = useState<AuthMode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const usernameRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
 
   const apiUrl = "https://unresources.cravii.ng/api/login.php";
 
+  // Check if user is already logged in
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const userJson = await SecureStore.getItemAsync("user");
+        const userId = await SecureStore.getItemAsync("user_id");
+
+        if (userJson && userId) {
+          // You could add more validation here if needed (e.g. parse JSON, check expiry)
+          setIsAuthenticated(true);
+        }
+      } catch (err) {
+        console.error("Failed to read auth from SecureStore:", err);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // ─── Show loading while checking auth ────────────────────────
+  if (isCheckingAuth) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={C.purple} />
+      </View>
+    );
+  }
+
+  // ─── Already logged in → redirect ────────────────────────────
+  if (isAuthenticated) {
+    return <Redirect href="/Home" />;
+  }
+
+  // ─── Not logged in → show login/signup form ──────────────────
   const handleAuth = async () => {
     if (!username.trim() || !password.trim()) {
       Alert.alert("Missing Fields", "Username and password are required.");
@@ -242,7 +284,8 @@ export default function Login() {
                 style={styles.input}
                 placeholder="••••••••"
                 placeholderTextColor="#2E2E50"
-                secureTextEntry
+                autoCapitalize="none"
+                secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
                 onFocus={() => setFocusedField("password")}
@@ -250,6 +293,14 @@ export default function Login() {
                 returnKeyType="done"
                 onSubmitEditing={handleAuth}
               />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={styles.inputIcon}>
+                  {showPassword ? "🙈" : "👁"}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -289,6 +340,7 @@ export default function Login() {
   );
 }
 
+// ─── Colors (unchanged) ────────────────────────────────────────────────
 const C = {
   bg: "#08080F",
   card: "#0F0F1C",
@@ -302,6 +354,7 @@ const C = {
   mutedDark: "#2E2E50",
 };
 
+// ─── Styles (added loading container) ──────────────────────────────────
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -312,6 +365,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
     paddingVertical: 48,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: C.bg,
+    justifyContent: "center",
+    alignItems: "center",
   },
   header: {
     marginBottom: 28,

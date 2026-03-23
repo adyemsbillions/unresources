@@ -9,6 +9,7 @@
   - Expand image preview
   - Open PDF link
   - Create date separators
+  - Hidden background refresh (~every 2.3s)
 */
 
 import * as DocumentPicker from "expo-document-picker";
@@ -27,7 +28,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -126,7 +126,7 @@ function buildMessagesWithDates(messages: GroupMessage[]) {
 
     if (dateStr !== lastDate) {
       result.push({
-        id: `sep_${dateStr}_${msg.id}`,
+        id: `sep_${dateStr}_${msg.id || Date.now()}`,
         group_id: msg.group_id,
         sender_id: 0,
         dateSeparator:
@@ -617,7 +617,6 @@ export default function GroupChatRoom() {
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -626,6 +625,8 @@ export default function GroupChatRoom() {
 
   const scrollRef = useRef<ScrollView>(null);
   const hasLoadedInitially = useRef(false);
+  const previousMessageCountRef = useRef(0);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const imageSize = Math.min(Math.max(width * 0.56, 180), 280);
 
@@ -670,7 +671,7 @@ export default function GroupChatRoom() {
     }
   };
 
-  const loadGroupDetails = async (userId: string) => {
+  const loadGroupDetails = async (userId: string, isBackground = false) => {
     if (!groupId || !userId) return;
 
     try {
@@ -678,14 +679,7 @@ export default function GroupChatRoom() {
         `${API_BASE}/groups.php?action=details&group_id=${encodeURIComponent(groupId)}&user_id=${encodeURIComponent(userId)}`,
       );
       const text = await res.text();
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        console.log("Invalid groups details response:", text);
-        return;
-      }
+      const data = JSON.parse(text);
 
       if (data.status === "success") {
         setGroup(data.group || null);
@@ -693,10 +687,11 @@ export default function GroupChatRoom() {
       }
     } catch (err) {
       console.log("loadGroupDetails failed:", err);
+      if (!isBackground) setError("Failed to load group info");
     }
   };
 
-  const loadMessages = async (showLoader = true) => {
+  const loadMessages = async (showLoader = false) => {
     if (!groupId) return;
 
     if (showLoader) setLoading(true);
@@ -707,15 +702,7 @@ export default function GroupChatRoom() {
         `${API_BASE}/group_messages.php?action=list&group_id=${encodeURIComponent(groupId)}`,
       );
       const text = await res.text();
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        console.log("Invalid group_messages response:", text);
-        setError("Invalid server response");
-        return;
-      }
+      const data = JSON.parse(text);
 
       if (data.status === "success") {
         const normalized: GroupMessage[] = Array.isArray(data.messages)
@@ -723,58 +710,64 @@ export default function GroupChatRoom() {
           : [];
 
         const withDates = buildMessagesWithDates(normalized);
-        setMessages(withDates);
+        const newCount = withDates.filter((m) => !m.dateSeparator).length;
 
-        if (!hasLoadedInitially.current) {
-          hasLoadedInitially.current = true;
-          scrollToEnd(false);
+        // Only update if count changed (prevents unnecessary re-renders)
+        if (newCount !== previousMessageCountRef.current) {
+          setMessages(withDates);
+          previousMessageCountRef.current = newCount;
+
+          if (!hasLoadedInitially.current) {
+            hasLoadedInitially.current = true;
+            scrollToEnd(false);
+          } else if (newCount > previousMessageCountRef.current) {
+            scrollToEnd(true);
+          }
         }
       } else {
-        setError(data.message || "Failed to load messages");
+        if (showLoader) setError(data.message || "Failed to load messages");
       }
     } catch (err) {
       console.log("loadMessages failed:", err);
-      setError("Network error");
+      if (showLoader) setError("Network error");
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (showLoader) setLoading(false);
     }
   };
 
   useEffect(() => {
-    const init = async () => {
-      await loadCurrentUser();
-    };
-    init();
+    loadCurrentUser();
   }, []);
 
   useEffect(() => {
     if (!currentUserId || !groupId) return;
 
-    const run = async () => {
-      await loadGroupDetails(currentUserId);
+    const init = async () => {
+      await loadGroupDetails(currentUserId, false);
       await loadMessages(true);
     };
-
-    run();
+    init();
   }, [currentUserId, groupId]);
 
+  // ── Hidden background polling ──
   useEffect(() => {
-    if (!groupId || !currentUserId) return;
+    if (!currentUserId || !groupId) return;
 
-    const interval = setInterval(() => {
-      loadMessages(false);
-      loadGroupDetails(currentUserId);
-    }, 3000);
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
 
-    return () => clearInterval(interval);
-  }, [groupId, currentUserId]);
+    pollingIntervalRef.current = setInterval(() => {
+      loadMessages(false); // no loader
+      loadGroupDetails(currentUserId, true); // background
+    }, 2300);
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadMessages(false);
-    loadGroupDetails(currentUserId);
-  };
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [currentUserId, groupId]);
 
   const sendTextMessage = async () => {
     const text = input.trim();
@@ -802,7 +795,7 @@ export default function GroupChatRoom() {
     setSending(true);
     setMessages((prev) =>
       buildMessagesWithDates([
-        ...prev.filter((m) => !m.dateSeparator),
+        ...prev.filter((m) => !m.dateSeparator && !m.temp),
         tempMsg,
       ]),
     );
@@ -821,15 +814,7 @@ export default function GroupChatRoom() {
       });
 
       const textRes = await res.text();
-      let data;
-      try {
-        data = JSON.parse(textRes);
-      } catch {
-        console.log("sendText invalid response:", textRes);
-        Alert.alert("Error", "Invalid server response");
-        setMessages((prev) => prev.filter((m) => m.id !== tempId));
-        return;
-      }
+      const data = JSON.parse(textRes);
 
       if (data.status === "success") {
         loadMessages(false);
@@ -878,14 +863,7 @@ export default function GroupChatRoom() {
       });
 
       const textRes = await res.text();
-      let data;
-      try {
-        data = JSON.parse(textRes);
-      } catch {
-        console.log("sendImage invalid response:", textRes);
-        Alert.alert("Error", "Invalid server response");
-        return;
-      }
+      const data = JSON.parse(textRes);
 
       if (data.status === "success") {
         loadMessages(false);
@@ -933,14 +911,7 @@ export default function GroupChatRoom() {
       });
 
       const textRes = await res.text();
-      let data;
-      try {
-        data = JSON.parse(textRes);
-      } catch {
-        console.log("sendPdf invalid response:", textRes);
-        Alert.alert("Error", "Invalid server response");
-        return;
-      }
+      const data = JSON.parse(textRes);
 
       if (data.status === "success") {
         loadMessages(false);
@@ -998,11 +969,11 @@ export default function GroupChatRoom() {
     return (
       <SafeAreaView style={s.safe} edges={["top", "left", "right"]}>
         <StatusBar barStyle="light-content" backgroundColor={C.bg} />
-        <ActivityIndicator
-          size="large"
-          color={C.purpleGlow}
-          style={{ flex: 1 }}
-        />
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <ActivityIndicator size="large" color={C.purpleGlow} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -1087,13 +1058,6 @@ export default function GroupChatRoom() {
             paddingBottom: Math.max(insets.bottom + 110, 120),
           }}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={C.purpleGlow}
-            />
-          }
           keyboardShouldPersistTaps="handled"
         >
           {messages.map((msg) => (

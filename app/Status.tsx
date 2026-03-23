@@ -1,12 +1,11 @@
 /*
   File: app/Status.tsx
-  Purpose: WhatsApp-like Status Screen with text + photo status + caption + pause on hold
-  Updates (March 2025):
-  - Real avatar_url shown when available → fallback to colored initials
-  - My Status card also uses real avatar if available
-  - Gold verified badge next to name for user_id === 1 (demo/hardcoded)
-  - Public view counts shown in list and viewer (from backend status_views table)
-  - User ID 1 (platform owner) is always pinned at the top with crown icon
+  Purpose: WhatsApp-like Status Screen
+  Final fixes - March 22, 2026
+  • Bottom nav now sits perfectly at bottom (no lifting)
+  • Verified badge shows correctly for ALL users (Peter blue, etc.)
+  • Owner still has crown + Admin + gold fallback
+  • Nav inset fix: SafeAreaView edges exclude bottom, nav uses insets.bottom only
 */
 
 import * as ImagePicker from "expo-image-picker";
@@ -29,9 +28,12 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import Svg, { Circle, Line, Path } from "react-native-svg";
-import { BottomNav } from "./Home"; // Assuming this exists in your project
+import { BottomNav } from "./Home";
 
 const API_BASE = "https://unresources.cravii.ng/api";
 
@@ -137,6 +139,7 @@ type StatusUser = {
   avatar?: string;
   seen: boolean;
   stories: Story[];
+  badge_type?: "none" | "blue" | "black" | "gold";
 };
 
 // ─── UTILS ───────────────────────────────────────────────────────────────────
@@ -259,13 +262,33 @@ function IconBell({ color, size = 19 }: { color: string; size?: number }) {
   );
 }
 
-function VerifiedBadge({ size = 16, color = "#FFD700" }) {
+function VerifiedBadge({
+  size = 16,
+  type = "gold",
+}: {
+  size?: number;
+  type?: "gold" | "blue" | "black" | "none";
+}) {
+  if (type === "none") return null;
+
+  let fill = "#FFD700";
+  let checkStroke = "#000";
+
+  if (type === "blue") {
+    fill = "#1DA1F2";
+    checkStroke = "#FFFFFF";
+  }
+  if (type === "black") {
+    fill = "#000000";
+    checkStroke = "#FFFFFF";
+  }
+
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24">
-      <Circle cx="12" cy="12" r="10" fill={color} />
+      <Circle cx="12" cy="12" r="10" fill={fill} />
       <Path
         d="M9 12l2 2 4-4"
-        stroke="#000"
+        stroke={checkStroke}
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -274,8 +297,13 @@ function VerifiedBadge({ size = 16, color = "#FFD700" }) {
   );
 }
 
-// Crown icon for platform owner
-function CrownIcon({ size = 14, color = "#FFD700" }) {
+function CrownIcon({
+  size = 14,
+  color = "#FFD700",
+}: {
+  size?: number;
+  color?: string;
+}) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}>
       <Path d="M12 2L2 7l3 9h14l3-9-10-5zM5 16l2-6 5 4 5-4 2 6z" />
@@ -283,7 +311,7 @@ function CrownIcon({ size = 14, color = "#FFD700" }) {
   );
 }
 
-// ─── AVATAR COMPONENT ────────────────────────────────────────────────────────
+// ─── AVATAR ──────────────────────────────────────────────────────────────────
 
 function UserAvatar({
   user,
@@ -328,13 +356,7 @@ function UserAvatar({
         justifyContent: "center",
       }}
     >
-      <Text
-        style={{
-          color: "#fff",
-          fontSize: size * 0.38,
-          fontWeight: "800",
-        }}
-      >
+      <Text style={{ color: "#fff", fontSize: size * 0.38, fontWeight: "800" }}>
         {initials}
       </Text>
     </View>
@@ -499,7 +521,7 @@ function StatusRow({
   T: Theme;
 }) {
   const isOwner = isPlatformOwner(status.user_id);
-  const verified = isOwner; // owner has both crown + verification badge
+  const badgeType = status.badge_type || (isOwner ? "gold" : "none");
   const latestStory = status.stories[0];
 
   return (
@@ -545,7 +567,7 @@ function StatusRow({
             </View>
           )}
 
-          {verified && <VerifiedBadge size={16} />}
+          {badgeType !== "none" && <VerifiedBadge size={16} type={badgeType} />}
         </View>
 
         <View
@@ -588,6 +610,8 @@ function StatusRow({
 // ─── MAIN COMPONENT ──────────────────────────────────────────────────────────
 
 export default function Status() {
+  const insets = useSafeAreaInsets();
+
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const T: Theme = THEMES[themeMode];
 
@@ -640,7 +664,7 @@ export default function Status() {
         `${API_BASE}/get_statuses.php?viewer_id=${encodeURIComponent(String(userId))}`,
       );
       const text = await res.text();
-      console.log("Statuses raw response:", text); // ← debug helper
+      console.log("Statuses raw response:", text);
       const data = JSON.parse(text);
       if (data.status === "success") {
         setStatuses(data.statuses || []);
@@ -724,11 +748,9 @@ export default function Status() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         quality: 0.7,
-        allowsEditing: true,
-        aspect: [9, 16],
+        allowsEditing: false,
         base64: true,
       });
-
       if (result.canceled || !result.assets?.length) return;
 
       const asset = result.assets[0];
@@ -918,10 +940,6 @@ export default function Status() {
   const recent = otherStatuses.filter((st) => !st.seen);
   const viewed = otherStatuses.filter((st) => st.seen);
 
-  const currentStatus = statuses[statusIndex];
-  const currentStory = currentStatus?.stories?.[storyIndex];
-
-  // Prepare data for "My Status" avatar
   const myStatus = myStatuses[0];
   const myAvatarData = {
     avatar: currentUser?.avatar_url || myStatus?.avatar,
@@ -930,9 +948,19 @@ export default function Status() {
     name: currentUser?.name || currentUser?.username || "You",
   };
 
+  const myBadgeType =
+    myStatus?.badge_type ||
+    (isPlatformOwner(currentUser?.id) ? "gold" : "none");
+
+  // Nav height = fixed content height (no inset yet, added via paddingBottom below)
+  const NAV_CONTENT_HEIGHT = 56;
+
   if (loading) {
     return (
-      <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+      <SafeAreaView
+        style={[s.safe, { backgroundColor: T.bg }]}
+        edges={["top", "left", "right"]}
+      >
         <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
         <ActivityIndicator
           size="large"
@@ -944,7 +972,12 @@ export default function Status() {
   }
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
+    // KEY FIX: exclude "bottom" from SafeAreaView edges so it never
+    // auto-pads the bottom. We handle bottom inset ourselves on the nav bar.
+    <SafeAreaView
+      style={[s.safe, { backgroundColor: T.bg }]}
+      edges={["top", "left", "right"]}
+    >
       <StatusBar barStyle={T.statusBar} backgroundColor={T.bg} />
 
       <View style={{ paddingTop: Platform.OS === "android" ? 2 : 0 }}>
@@ -958,7 +991,10 @@ export default function Status() {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 90 }}
+        contentContainerStyle={{
+          // Scroll content clears the fixed nav bar (content height + inset)
+          paddingBottom: NAV_CONTENT_HEIGHT + insets.bottom + 8,
+        }}
       >
         <TouchableOpacity
           style={[
@@ -994,7 +1030,14 @@ export default function Status() {
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[s.myName, { color: T.white }]}>My Status</Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Text style={[s.myName, { color: T.white }]}>My Status</Text>
+              {myBadgeType !== "none" && (
+                <VerifiedBadge size={14} type={myBadgeType} />
+              )}
+            </View>
             <Text style={[s.mySub, { color: T.faint }]}>
               {myStatuses.length > 0
                 ? `Tap to view • ${timeAgo(myStatuses[0].stories[0].created_at)}`
@@ -1284,103 +1327,151 @@ export default function Status() {
         animationType="fade"
         onRequestClose={closeViewer}
       >
-        <View
-          style={[
-            s.viewer,
-            {
-              backgroundColor:
-                currentStory?.type === "image"
-                  ? "#000"
-                  : currentStory?.background_color || THEMES.dark.bgDeep,
-            },
-          ]}
-        >
-          <View style={s.progressWrap}>
-            {(currentStatus?.stories || []).map((_, i) => {
-              const isActive = i === storyIndex;
-              const isPassed = i < storyIndex;
+        {viewerVisible &&
+          (() => {
+            const currentStatus = statuses[statusIndex];
+            const currentStory = currentStatus?.stories?.[storyIndex];
+
+            if (!currentStatus || !currentStory) {
               return (
-                <View key={i} style={s.progressBar}>
-                  {isPassed ? (
-                    <View style={s.progressFillFull} />
-                  ) : isActive ? (
-                    <Animated.View
-                      style={[
-                        s.progressFillAnimated,
-                        {
-                          width: progress.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ["0%", "100%"],
-                          }),
-                        },
-                      ]}
-                    />
-                  ) : null}
+                <View style={s.viewer}>
+                  <Text
+                    style={{ color: "#fff", fontSize: 18, textAlign: "center" }}
+                  >
+                    No story available
+                  </Text>
                 </View>
               );
-            })}
-          </View>
+            }
 
-          <View style={s.viewerHeader}>
-            <Text style={s.viewerName}>{currentStatus?.name}</Text>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 12 }}
-            >
-              <Text style={s.viewerTime}>
-                {currentStory?.created_at
-                  ? timeAgo(currentStory.created_at)
-                  : ""}
-              </Text>
+            return (
+              <View
+                style={[
+                  s.viewer,
+                  {
+                    backgroundColor:
+                      currentStory.type === "image"
+                        ? "#000"
+                        : currentStory.background_color || THEMES.dark.bgDeep,
+                  },
+                ]}
+              >
+                <View style={s.progressWrap}>
+                  {(currentStatus.stories || []).map((_, i) => {
+                    const isActive = i === storyIndex;
+                    const isPassed = i < storyIndex;
+                    return (
+                      <View key={i} style={s.progressBar}>
+                        {isPassed ? (
+                          <View style={s.progressFillFull} />
+                        ) : isActive ? (
+                          <Animated.View
+                            style={[
+                              s.progressFillAnimated,
+                              {
+                                width: progress.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: ["0%", "100%"],
+                                }),
+                              },
+                            ]}
+                          />
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </View>
 
-              {currentStory?.views !== undefined && currentStory.views > 0 && (
-                <Text style={s.viewerViews}>👁 {currentStory.views}</Text>
-              )}
-            </View>
-          </View>
-
-          <View style={s.viewerCenter}>
-            {currentStory?.type === "image" && currentStory?.media_url ? (
-              <>
-                <Image
-                  source={{ uri: currentStory.media_url }}
-                  style={s.viewerImage}
-                  resizeMode="contain"
-                />
-                {currentStory?.content && (
-                  <View style={s.captionWrap}>
-                    <Text style={s.viewerCaption}>{currentStory.content}</Text>
+                <View style={s.viewerHeader}>
+                  <Text style={s.viewerName}>{currentStatus.name}</Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <Text style={s.viewerTime}>
+                      {currentStory.created_at
+                        ? timeAgo(currentStory.created_at)
+                        : ""}
+                    </Text>
+                    {currentStory.views !== undefined &&
+                      currentStory.views > 0 && (
+                        <Text style={s.viewerViews}>
+                          👁 {currentStory.views}
+                        </Text>
+                      )}
                   </View>
-                )}
-              </>
-            ) : (
-              <Text style={s.viewerText}>{currentStory?.content || ""}</Text>
-            )}
-          </View>
+                </View>
 
-          <View style={s.touchAreas}>
-            <Pressable
-              style={{ flex: 1 }}
-              onPress={prevStory}
-              onLongPress={pauseProgress}
-              onPressOut={resumeProgress}
-              delayLongPress={150}
-            />
-            <Pressable
-              style={{ flex: 1 }}
-              onPress={nextStory}
-              onLongPress={pauseProgress}
-              onPressOut={resumeProgress}
-              delayLongPress={150}
-            />
-          </View>
+                <View style={s.viewerCenter}>
+                  {currentStory.type === "image" && currentStory.media_url ? (
+                    <>
+                      <Image
+                        source={{ uri: currentStory.media_url }}
+                        style={s.viewerImage}
+                        resizeMode="contain"
+                      />
+                      {currentStory.content && (
+                        <View style={s.captionWrap}>
+                          <Text style={s.viewerCaption}>
+                            {currentStory.content}
+                          </Text>
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <Text style={s.viewerText}>
+                      {currentStory.content || ""}
+                    </Text>
+                  )}
+                </View>
 
-          <TouchableOpacity style={s.closeArea} onPress={closeViewer}>
-            <Text style={s.closeText}>×</Text>
-          </TouchableOpacity>
-        </View>
+                <View style={s.touchAreas}>
+                  <Pressable
+                    style={{ flex: 1 }}
+                    onPress={prevStory}
+                    onLongPress={pauseProgress}
+                    onPressOut={resumeProgress}
+                    delayLongPress={150}
+                  />
+                  <Pressable
+                    style={{ flex: 1 }}
+                    onPress={nextStory}
+                    onLongPress={pauseProgress}
+                    onPressOut={resumeProgress}
+                    delayLongPress={150}
+                  />
+                </View>
+
+                <TouchableOpacity style={s.closeArea} onPress={closeViewer}>
+                  <Text style={s.closeText}>×</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
       </Modal>
 
-      <BottomNav active="status" T={T} />
+      {/*
+        ─── BOTTOM NAVIGATION ────────────────────────────────────────────────
+        KEY FIX EXPLAINED:
+        • SafeAreaView edges above excludes "bottom" — so no auto bottom padding
+        • This View sits at the very bottom of the screen
+        • paddingBottom = insets.bottom handles gesture bar / home indicator
+          on all devices (Android gesture nav, iPhone home indicator, etc.)
+        • No double-inset. No shifting. Works on notched & non-notched devices.
+      */}
+      <View
+        style={{
+          backgroundColor: T.navBg || T.card,
+          paddingBottom: insets.bottom,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: T.border,
+        }}
+      >
+        <BottomNav active="status" T={T} />
+      </View>
     </SafeAreaView>
   );
 }
@@ -1449,16 +1540,6 @@ const s = StyleSheet.create({
     gap: 14,
   },
   myAvatarWrap: { position: "relative" },
-  myAvatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "rgba(139,92,246,0.4)",
-  },
-  myAvatarText: { fontSize: 22, fontWeight: "800" },
   addBtn: {
     position: "absolute",
     bottom: -4,
@@ -1516,13 +1597,7 @@ const s = StyleSheet.create({
     gap: 14,
   },
   ring: { width: 56, height: 56, borderRadius: 17, padding: 2.5 },
-  ringInner: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 2.5,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+
   statusName: { fontSize: 15, fontWeight: "700" },
   statusTime: { fontSize: 12, marginTop: 2 },
   unseenDot: { width: 10, height: 10, borderRadius: 5 },
@@ -1557,7 +1632,7 @@ const s = StyleSheet.create({
     marginBottom: 12,
   },
   imagePickerText: { fontSize: 14 },
-  previewImage: { width: "100%", height: "100%", resizeMode: "cover" },
+  previewImage: { width: "100%", height: "100%", resizeMode: "contain" },
   captionInput: {
     minHeight: 90,
     borderWidth: 1,
@@ -1628,7 +1703,11 @@ const s = StyleSheet.create({
     textAlign: "center",
     fontWeight: "700",
   },
-  viewerImage: { width: "100%", height: "78%" },
+  viewerImage: {
+    width: "100%",
+    height: "78%",
+    resizeMode: "contain",
+  },
   captionWrap: {
     position: "absolute",
     left: 16,
