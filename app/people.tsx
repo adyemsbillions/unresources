@@ -436,11 +436,26 @@ export default function People() {
 
       if (data.status === "success") {
         const allUsers = Array.isArray(data.users) ? data.users : [];
-        setPeople(
-          me?.id
-            ? allUsers.filter((u: Person) => String(u.id) !== String(me.id))
-            : allUsers,
-        );
+        let users = me?.id
+          ? allUsers.filter((u: Person) => String(u.id) !== String(me.id))
+          : allUsers;
+
+        // 1. Separate admin (id = 1)
+        const admin = users.find((u) => Number(u.id) === 1);
+
+        // 2. Remove admin from list
+        const others = users.filter((u) => Number(u.id) !== 1);
+
+        // 3. Shuffle others
+        for (let i = others.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [others[i], others[j]] = [others[j], others[i]];
+        }
+
+        // 4. Put admin on top
+        const finalList = admin ? [admin, ...others] : others;
+
+        setPeople(finalList);
       } else {
         setError(data.message || "Failed to load people");
       }
